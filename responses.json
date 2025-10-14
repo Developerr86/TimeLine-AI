@@ -1,0 +1,47 @@
+[
+  {
+    "timestamp": "2025-10-14T22:49:05.831719",
+    "model": "ollama",
+    "model_name": "qwen2.5vl:3b",
+    "image_path": "samples\\sample1.png",
+    "title": "Visual Studio Code Properties",
+    "summary": "The user is adjusting the properties of the Visual Studio Code application, including target location and shortcut settings.",
+    "raw_response": "{\n  \"title\": \"Visual Studio Code Properties\",\n  \"summary\": \"The user is adjusting the properties of the Visual Studio Code application, including target location and shortcut settings.\"\n}",
+    "token_usage": {
+      "prompt_tokens": 1448,
+      "completion_tokens": 38,
+      "prompt_eval_duration_ns": 186097878400,
+      "eval_duration_ns": 1004027500,
+      "total_duration_ns": 196938533900,
+      "total_tokens": 1486
+    }
+  },
+  {
+    "timestamp": "2025-10-14T23:00:51.385395",
+    "model": "gemini",
+    "model_name": "gemini-2.0-flash",
+    "image_path": "samples\\sample2.png",
+    "title": "Checking out a Tweet on X",
+    "summary": "The user is currently viewing the \"For You\" feed on X (formerly Twitter) and is looking at a tweet about building with Nano Banana developer tutorial.",
+    "raw_response": "```json\n{\n  \"title\": \"Checking out a Tweet on X\",\n  \"summary\": \"The user is currently viewing the \\\"For You\\\" feed on X (formerly Twitter) and is looking at a tweet about building with Nano Banana developer tutorial.\"\n}\n```",
+    "token_usage": {
+      "prompt_tokens": 2012,
+      "completion_tokens": 58,
+      "total_tokens": 2070
+    }
+  },
+  {
+    "timestamp": "2025-10-14T23:01:09.353894",
+    "model": "gemini",
+    "model_name": "gemini-2.0-flash",
+    "image_path": "samples\\sample3.png",
+    "title": "Browsing GitHub's Dashboard and Notifications",
+    "summary": "The user is on GitHub, looking at their dashboard, recent activity, and trending repositories, likely catching up on project updates and exploring new content.",
+    "raw_response": "```json\n{\n  \"title\": \"Browsing GitHub's Dashboard and Notifications\",\n  \"summary\": \"The user is on GitHub, looking at their dashboard, recent activity, and trending repositories, likely catching up on project updates and exploring new content.\"\n}\n```",
+    "token_usage": {
+      "prompt_tokens": 2012,
+      "completion_tokens": 58,
+      "total_tokens": 2070
+    }
+  }
+]

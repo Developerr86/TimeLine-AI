@@ -1,0 +1,12 @@
+# Core dependencies for analyse-screen.py
+ollama>=0.3.0
+google-generativeai>=0.3.0
+python-dotenv>=1.0.0
+
+# Additional dependencies for gemini-test.py
+# (Pillow is optional for image processing in gemini-test.py)
+Pillow>=10.0.0
+
+# Development and utility dependencies
+argparse  # Built-in, but listed for clarity
+pathlib   # Built-in, but listed for clarity
