@@ -254,7 +254,7 @@ def generate_activity_summary_gemini(image_path: str):
 
         2.  **Generate a JSON Summary:** Based on your analysis, create a title and a brief summary for this activity.
             The title should be conversational and 5-8 words long.
-            The summary should be 1-2 sentences describing the main task.
+            The summary should be 3 sentences describing the main task.
 
         Respond with ONLY a valid JSON object in the following format:
         {
