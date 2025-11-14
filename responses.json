@@ -1,47 +1,70 @@
 [
   {
-    "timestamp": "2025-10-14T22:49:05.831719",
+    "timestamp": "2025-11-14T12:08:25.217018",
     "model": "ollama",
-    "model_name": "qwen2.5vl:3b",
-    "image_path": "samples\\sample1.png",
-    "title": "Visual Studio Code Properties",
-    "summary": "The user is adjusting the properties of the Visual Studio Code application, including target location and shortcut settings.",
-    "raw_response": "{\n  \"title\": \"Visual Studio Code Properties\",\n  \"summary\": \"The user is adjusting the properties of the Visual Studio Code application, including target location and shortcut settings.\"\n}",
+    "model_name": "qwen3-vl:2b",
+    "image_path": "screenshots\\screenshot_20251114_120811_514018.png",
+    "title": "Browsing YouTube Homepage",
+    "summary": "User is viewing the YouTube homepage with video recommendations and a promotional banner for YouTube Premium.",
+    "raw_response": "{\n  \"title\": \"Browsing YouTube Homepage\",\n  \"summary\": \"User is viewing the YouTube homepage with video recommendations and a promotional banner for YouTube Premium.\"\n}",
     "token_usage": {
-      "prompt_tokens": 1448,
-      "completion_tokens": 38,
-      "prompt_eval_duration_ns": 186097878400,
-      "eval_duration_ns": 1004027500,
-      "total_duration_ns": 196938533900,
-      "total_tokens": 1486
+      "prompt_tokens": 1613,
+      "completion_tokens": 1249,
+      "total_tokens": 2862
     }
   },
   {
-    "timestamp": "2025-10-14T23:00:51.385395",
-    "model": "gemini",
-    "model_name": "gemini-2.0-flash",
-    "image_path": "samples\\sample2.png",
-    "title": "Checking out a Tweet on X",
-    "summary": "The user is currently viewing the \"For You\" feed on X (formerly Twitter) and is looking at a tweet about building with Nano Banana developer tutorial.",
-    "raw_response": "```json\n{\n  \"title\": \"Checking out a Tweet on X\",\n  \"summary\": \"The user is currently viewing the \\\"For You\\\" feed on X (formerly Twitter) and is looking at a tweet about building with Nano Banana developer tutorial.\"\n}\n```",
+    "timestamp": "2025-11-14T12:13:09.204681",
+    "model": "ollama",
+    "model_name": "qwen3-vl:2b",
+    "image_path": "screenshots\\screenshot_20251114_121244_949626.png",
+    "title": "Error",
+    "summary": "Analysis failed: Expecting value: line 1 column 1 (char 0)",
+    "raw_response": "",
+    "token_usage": {},
+    "error": "Expecting value: line 1 column 1 (char 0)"
+  },
+  {
+    "timestamp": "2025-11-14T12:15:02.282304",
+    "model": "ollama",
+    "model_name": "qwen3-vl:4b",
+    "image_path": "screenshots\\screenshot_20251114_121440_784541.png",
+    "title": "Reading China's Prehistoric Timeline on Wikipedia",
+    "summary": "The user is reviewing the Wikipedia page for prehistory in China, focusing on Homo erectus sites and their chronological dates.",
+    "raw_response": "{\n  \"title\": \"Reading China's Prehistoric Timeline on Wikipedia\",\n  \"summary\": \"The user is reviewing the Wikipedia page for prehistory in China, focusing on Homo erectus sites and their chronological dates.\"\n}",
     "token_usage": {
-      "prompt_tokens": 2012,
-      "completion_tokens": 58,
-      "total_tokens": 2070
+      "prompt_tokens": 1613,
+      "completion_tokens": 1234,
+      "total_tokens": 2847
     }
   },
   {
-    "timestamp": "2025-10-14T23:01:09.353894",
-    "model": "gemini",
-    "model_name": "gemini-2.0-flash",
-    "image_path": "samples\\sample3.png",
-    "title": "Browsing GitHub's Dashboard and Notifications",
-    "summary": "The user is on GitHub, looking at their dashboard, recent activity, and trending repositories, likely catching up on project updates and exploring new content.",
-    "raw_response": "```json\n{\n  \"title\": \"Browsing GitHub's Dashboard and Notifications\",\n  \"summary\": \"The user is on GitHub, looking at their dashboard, recent activity, and trending repositories, likely catching up on project updates and exploring new content.\"\n}\n```",
+    "timestamp": "2025-11-14T12:23:06.382808",
+    "model": "ollama",
+    "model_name": "qwen3-vl:4b",
+    "image_path": "screenshots\\uploaded_20251114_122247_136710.png",
+    "title": "Exploring Blockchain Technology on Investopedia",
+    "summary": "The user is studying Investopedia's detailed explanation of blockchain as a decentralized ledger, focusing on its definition, key features, and applications in various industries.",
+    "raw_response": "{\n  \"title\": \"Exploring Blockchain Technology on Investopedia\",\n  \"summary\": \"The user is studying Investopedia's detailed explanation of blockchain as a decentralized ledger, focusing on its definition, key features, and applications in various industries.\"\n}",
     "token_usage": {
-      "prompt_tokens": 2012,
-      "completion_tokens": 58,
-      "total_tokens": 2070
+      "prompt_tokens": 2241,
+      "completion_tokens": 956,
+      "total_tokens": 3197
+    },
+    "uploaded": true
+  },
+  {
+    "timestamp": "2025-11-14T12:23:48.885651",
+    "model": "ollama",
+    "model_name": "qwen3-vl:4b",
+    "image_path": "screenshots\\screenshot_20251114_122331_502302.png",
+    "title": "Learning Scrum Concepts in JIRA Tutorial Video",
+    "summary": "The user is watching a tutorial video on Agile, Scrum, and JIRA project setup, currently reviewing a Scrum Cheat Sheet to understand key processes and terminology.",
+    "raw_response": "{\n  \"title\": \"Learning Scrum Concepts in JIRA Tutorial Video\",\n  \"summary\": \"The user is watching a tutorial video on Agile, Scrum, and JIRA project setup, currently reviewing a Scrum Cheat Sheet to understand key processes and terminology.\"\n}",
+    "token_usage": {
+      "prompt_tokens": 1613,
+      "completion_tokens": 1040,
+      "total_tokens": 2653
     }
   }
 ]

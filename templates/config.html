@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeLine AI - Configuration</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Left Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">⚙️</div>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="/" class="nav-item" title="Timeline">
+                    <span class="icon">📊</span>
+                </a>
+                <a href="#" class="nav-item" title="Analytics">
+                    <span class="icon">📈</span>
+                </a>
+                <a href="#" class="nav-item" title="Calendar">
+                    <span class="icon">📅</span>
+                </a>
+                <a href="/config" class="nav-item active" title="Settings">
+                    <span class="icon">⚙️</span>
+                </a>
+                <a href="#" class="nav-item" title="Info">
+                    <span class="icon">ℹ️</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <h1 class="page-title">Configuration</h1>
+                <a href="/" class="btn-secondary" style="text-decoration: none;">← Back to Timeline</a>
+            </header>
+
+            <div style="max-width: 800px;">
+                <div class="config-panel">
+                    <h2>⚙️ Settings</h2>
+                    
+                    <form id="configForm" onsubmit="saveConfig(event)">
+                        <div class="form-group">
+                            <label for="interval">Screenshot Interval (seconds)</label>
+                            <input type="number" id="interval" name="interval" value="{{ config.interval }}" min="1" max="300" required>
+                            <small>How often to capture screenshots (1-300 seconds)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="similarity_threshold">Similarity Threshold</label>
+                            <input type="number" id="similarity_threshold" name="similarity_threshold" 
+                                   value="{{ config.similarity_threshold }}" min="0" max="1" step="0.01" required>
+                            <small>Images above this similarity (0-1) will be discarded. Recommended: 0.95</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="model_type">AI Model Type</label>
+                            <select id="model_type" name="model_type" onchange="toggleModelOptions()">
+                                <option value="ollama" {% if config.model_type == 'ollama' %}selected{% endif %}>Ollama (Local)</option>
+                                <option value="gemini" {% if config.model_type == 'gemini' %}selected{% endif %}>Google Gemini (Cloud)</option>
+                            </select>
+                            <small>Choose between local processing (Ollama) or cloud-based (Gemini)</small>
+                        </div>
+
+                        <div class="form-group" id="ollamaModelGroup">
+                            <label for="ollama_model">Ollama Model Name</label>
+                            <input type="text" id="ollama_model" name="ollama_model" value="{{ config.ollama_model }}">
+                            <small>e.g., qwen2.5vl:3b, llava, bakllava</small>
+                        </div>
+
+                        <div class="form-group" id="geminiModelGroup">
+                            <label for="gemini_model">Gemini Model Name</label>
+                            <input type="text" id="gemini_model" name="gemini_model" value="{{ config.gemini_model }}">
+                            <small>e.g., gemini-2.5-pro, gemini-2.0-flash</small>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary">💾 Save Configuration</button>
+                            <a href="/" class="btn-secondary">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="info-panel">
+                    <h3>💡 Tips & Information</h3>
+                    <ul>
+                        <li><strong>Screenshot Interval:</strong> Lower values (3-5s) capture more frequently but use more resources. Higher values (10-30s) are more efficient.</li>
+                        <li><strong>Similarity Threshold:</strong> Values between 0.90-0.99 work best. Higher = only very different screenshots are kept.</li>
+                        <li><strong>Ollama:</strong> Runs completely offline on your computer. Requires Ollama installation and model download.</li>
+                        <li><strong>Gemini:</strong> Cloud-based AI with higher accuracy. Requires internet connection and API key.</li>
+                    </ul>
+                    
+                    <h3 style="margin-top: 2rem;">📋 Environment Variables</h3>
+                    <ul>
+                        <li><code>GEMINI_API_KEY</code> - Required for using Gemini model</li>
+                        <li><code>OLLAMA_MODEL</code> - Default Ollama model name</li>
+                        <li><code>GEMINI_MODEL</code> - Default Gemini model name</li>
+                    </ul>
+                    
+                    <h3 style="margin-top: 2rem;">🔧 Setup Instructions</h3>
+                    <ul>
+                        <li>Create a <code>.env</code> file in the project root</li>
+                        <li>Add your API keys and model preferences</li>
+                        <li>For Ollama: Install from <a href="https://ollama.ai" target="_blank">ollama.ai</a></li>
+                        <li>For Gemini: Get API key from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a></li>
+                    </ul>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        function toggleModelOptions() {
+            const modelType = document.getElementById('model_type').value;
+            document.getElementById('ollamaModelGroup').style.display = 
+                modelType === 'ollama' ? 'block' : 'none';
+            document.getElementById('geminiModelGroup').style.display = 
+                modelType === 'gemini' ? 'block' : 'none';
+        }
+
+        async function saveConfig(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(event.target);
+            const config = {
+                interval: parseInt(formData.get('interval')),
+                similarity_threshold: parseFloat(formData.get('similarity_threshold')),
+                model_type: formData.get('model_type'),
+                ollama_model: formData.get('ollama_model'),
+                gemini_model: formData.get('gemini_model')
+            };
+            
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    alert('✅ Configuration saved successfully!');
+                    window.location.href = '/';
+                } else {
+                    alert('❌ Error saving configuration');
+                }
+            } catch (error) {
+                alert('❌ Error: ' + error);
+            }
+        }
+
+        toggleModelOptions();
+    </script>
+</body>
+</html>
