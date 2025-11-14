@@ -20,30 +20,46 @@ The web interface includes:
 
 ## Installation
 
+### Quick Setup (Recommended)
+
+Run the automated setup script:
+```bash
+python setup.py
+```
+
+This script will:
+1. ✅ Check if Ollama is installed (redirects to download if not)
+2. ✅ Check if the qwen2.5vl:3b model is available
+3. ✅ Download the model if needed
+4. ✅ Install all Python dependencies from requirements.txt
+5. ✅ Create .env configuration file
+
+### Manual Installation
+
 1. Clone this repository:
 ```bash
 git clone https://github.com/Developerr86/TimeLine-AI.git
 cd TimeLine-AI
 ```
 
-2. Install dependencies:
+2. Install Ollama (for local AI analysis):
+- Download from [ollama.ai](https://ollama.ai)
+- Pull a vision model: `ollama pull qwen2.5vl:3b`
+
+3. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Set up environment variables:
+4. Set up environment variables:
 ```bash
 cp .env.example .env
 ```
 
 Edit `.env` and add your configuration:
 - `GEMINI_API_KEY`: Required if using Google Gemini model
-- `OLLAMA_MODEL`: Default Ollama model to use
-- `GEMINI_MODEL`: Default Gemini model to use
-
-4. (Optional) Install Ollama for local AI analysis:
-- Download from [ollama.ai](https://ollama.ai)
-- Pull a vision model: `ollama pull qwen2.5vl:3b`
+- `OLLAMA_MODEL`: Default Ollama model to use (default: qwen2.5vl:3b)
+- `GEMINI_MODEL`: Default Gemini model to use (default: gemini-2.5-pro)
 
 ## Usage
 
