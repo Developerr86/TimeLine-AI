@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeLine AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div id="notification" class="notification"></div>
+    <div id="processingOverlay" class="processing-overlay">
+        <div class="processing-modal">
+            <div class="spinner"></div>
+            <h3>Analyzing Image...</h3>
+            <p>Please wait while AI processes your image</p>
+        </div>
+    </div>
+    
+    <div class="app-container">
+        <!-- Left Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">⚙️</div>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="/" class="nav-item active" title="Timeline">
+                    <span class="icon">📊</span>
+                </a>
+                <a href="#" class="nav-item" title="Analytics">
+                    <span class="icon">📈</span>
+                </a>
+                <a href="#" class="nav-item" title="Calendar">
+                    <span class="icon">📅</span>
+                </a>
+                <a href="/config" class="nav-item" title="Settings">
+                    <span class="icon">⚙️</span>
+                </a>
+                <a href="#" class="nav-item" title="Info">
+                    <span class="icon">ℹ️</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <h1 class="page-title">Timeline</h1>
+                <div class="date-nav">
+                    <button class="date-nav-btn">‹</button>
+                    <span class="current-date" id="currentDate">Today, <span id="dateDisplay"></span></span>
+                    <button class="date-nav-btn">›</button>
+                </div>
+            </header>
+
+            <!-- Controls Bar -->
+            <div class="controls-bar">
+                <div class="filter-tabs">
+                    <button class="filter-tab active">📋 All tasks</button>
+                    <button class="filter-tab">💼 Core tasks</button>
+                    <button class="filter-tab">⭐ Personal tasks</button>
+                    <button class="filter-tab">⚠️ Distractions</button>
+                    <button class="filter-tab">⏰ Idle time</button>
+                </div>
+                <div class="control-actions">
+                    <div class="status-badge" id="statusBadge">
+                        <span class="status-dot" id="statusDot">●</span>
+                        <span id="statusText">Stopped</span>
+                    </div>
+                    <input type="file" id="imageUpload" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
+                    <button class="action-btn upload-btn" onclick="document.getElementById('imageUpload').click()">📤 Upload Image</button>
+                    <button id="startBtn" class="action-btn start-btn" onclick="startCapture()">▶ Start</button>
+                    <button id="stopBtn" class="action-btn stop-btn" onclick="stopCapture()" disabled>■ Stop</button>
+                </div>
+            </div>
+
+            <!-- Stats Summary -->
+            <div class="stats-summary">
+                <div class="stat-box">
+                    <div class="stat-label">Total Activities</div>
+                    <div class="stat-value" id="totalActivities">{{ responses|length }}</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Current Model</div>
+                    <div class="stat-value" id="modelType">-</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Capture Interval</div>
+                    <div class="stat-value" id="captureInterval">-</div>
+                </div>
+            </div>
+
+            <!-- Timeline Cards -->
+            <div class="timeline-grid">
+                {% if responses %}
+                    {% for response in responses %}
+                    <div class="activity-card">
+                        <div class="card-header">
+                            <div class="activity-icon">
+                                {% if 'code' in response.title.lower() or 'vs code' in response.title.lower() %}
+                                💻
+                                {% elif 'youtube' in response.title.lower() or 'video' in response.title.lower() %}
+                                📺
+                                {% elif 'browse' in response.title.lower() or 'web' in response.title.lower() %}
+                                🌐
+                                {% elif 'github' in response.title.lower() %}
+                                🐙
+                                {% elif 'twitter' in response.title.lower() or 'x.com' in response.title.lower() %}
+                                🐦
+                                {% else %}
+                                📱
+                                {% endif %}
+                            </div>
+                            <div class="activity-info">
+                                <h3 class="activity-title">{{ response.title }}</h3>
+                                <p class="activity-time">{{ response.timestamp[11:16] }} - {{ response.timestamp[11:16] }}</p>
+                            </div>
+                        </div>
+                        
+                        {% if response.image_path %}
+                        <div class="screenshot-preview">
+                            {% set screenshot_filename = response.image_path.split('\\')[-1] if '\\' in response.image_path else response.image_path.split('/')[-1] %}
+                            <img src="{{ url_for('serve_screenshot', filename=screenshot_filename) }}" 
+                                 alt="Screenshot" 
+                                 class="screenshot-image"
+                                 onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'>📸 Screenshot unavailable</div>'">
+                        </div>
+                        {% endif %}
+                        
+                        <div class="card-body">
+                            <div class="summary-section">
+                                <h4 class="section-title">SUMMARY</h4>
+                                <p class="summary-text">{{ response.summary }}</p>
+                            </div>
+                            
+                            <div class="metrics-row">
+                                <div class="metric">
+                                    <div class="metric-header">
+                                        <span class="metric-label">MODEL</span>
+                                        <span class="metric-value-small">{{ response.model_name[:15] }}</span>
+                                    </div>
+                                </div>
+                                <div class="metric">
+                                    <div class="metric-header">
+                                        <span class="metric-label">TOKENS</span>
+                                        <span class="metric-value-small">{{ response.token_usage.total_tokens or '-' }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {% if response.error %}
+                            <div class="error-badge">
+                                ⚠️ {{ response.error }}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state-card">
+                        <div class="empty-icon">📸</div>
+                        <h2>No activities captured yet</h2>
+                        <p>Click "Start" to begin capturing and analyzing your screen activity.</p>
+                        <button class="empty-action-btn" onclick="startCapture()">▶ Start Capturing</button>
+                    </div>
+                {% endif %}
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let waitingForCapture = false;
+        
+        function updateDateDisplay() {
+            const now = new Date();
+            const options = { month: 'short', day: 'numeric' };
+            document.getElementById('dateDisplay').textContent = now.toLocaleDateString('en-US', options);
+        }
+        
+        function showProcessing() {
+            document.getElementById('processingOverlay').style.display = 'flex';
+        }
+        
+        function hideProcessing() {
+            document.getElementById('processingOverlay').style.display = 'none';
+        }
+        
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            if (!file.type.startsWith('image/')) {
+                showNotification('❌ Please select an image file', 'error');
+                return;
+            }
+            
+            showProcessing();
+            
+            const formData = new FormData();
+            formData.append('image', file);
+            
+            try {
+                const response = await fetch('/api/upload_image', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                hideProcessing();
+                
+                if (data.status === 'success') {
+                    showNotification('✅ Analysis complete: ' + data.title, 'success');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    showNotification('❌ Error: ' + data.message, 'error');
+                }
+            } catch (error) {
+                hideProcessing();
+                showNotification('❌ Upload failed: ' + error, 'error');
+            }
+            
+            event.target.value = '';
+        }
+        
+        function showNotification(message, type = 'info') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = 'notification notification-' + type + ' show';
+            
+            setTimeout(() => {
+                notification.className = 'notification';
+            }, 5000);
+        }
+
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                const statusDot = document.getElementById('statusDot');
+                const statusText = document.getElementById('statusText');
+                const statusBadge = document.getElementById('statusBadge');
+                const startBtn = document.getElementById('startBtn');
+                const stopBtn = document.getElementById('stopBtn');
+                
+                if (data.enabled) {
+                    statusDot.className = 'status-dot active';
+                    statusText.textContent = 'Active';
+                    statusBadge.className = 'status-badge active';
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                } else {
+                    statusDot.className = 'status-dot';
+                    statusText.textContent = 'Stopped';
+                    statusBadge.className = 'status-badge';
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    waitingForCapture = false;
+                }
+                
+                document.getElementById('totalActivities').textContent = data.total_responses;
+                document.getElementById('modelType').textContent = data.config.model_type;
+                document.getElementById('captureInterval').textContent = data.config.interval + 's';
+            } catch (error) {
+                console.error('Error updating status:', error);
+            }
+        }
+
+        async function checkLatestActivity() {
+            try {
+                const response = await fetch('/api/latest_activity');
+                const data = await response.json();
+                
+                if (data.screenshot_taken) {
+                    showNotification('📸 Screenshot captured!', 'info');
+                }
+                
+                if (data.new_analysis) {
+                    showNotification('🧠 Analysis complete: ' + data.title, 'success');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                }
+            } catch (error) {
+                console.error('Error checking latest activity:', error);
+            }
+        }
+
+        async function startCapture() {
+            try {
+                const response = await fetch('/api/start', { method: 'POST' });
+                const data = await response.json();
+                updateStatus();
+                waitingForCapture = true;
+                showNotification('⏳ Starting in 10 seconds...', 'info');
+                
+                setTimeout(() => {
+                    if (waitingForCapture) {
+                        showNotification('✅ Screenshot capture started!', 'success');
+                        waitingForCapture = false;
+                    }
+                }, 10000);
+            } catch (error) {
+                showNotification('❌ Error starting capture: ' + error, 'error');
+            }
+        }
+
+        async function stopCapture() {
+            try {
+                const response = await fetch('/api/stop', { method: 'POST' });
+                const data = await response.json();
+                updateStatus();
+                showNotification('⏸️ Screenshot capture stopped!', 'info');
+            } catch (error) {
+                showNotification('❌ Error stopping capture: ' + error, 'error');
+            }
+        }
+
+        updateDateDisplay();
+        updateStatus();
+        setInterval(updateStatus, 5000);
+        setInterval(checkLatestActivity, 2000);
+    </script>
+</body>
+</html>

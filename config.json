@@ -1,0 +1,8 @@
+{
+  "interval": 5,
+  "model_type": "ollama",
+  "ollama_model": "qwen3-vl:4b",
+  "gemini_model": "gemini-2.5-pro",
+  "similarity_threshold": 0.95,
+  "enabled": false
+}
