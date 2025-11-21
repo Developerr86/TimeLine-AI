@@ -30,4 +30,4 @@ pip install -e .
 
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-python predict.py --model-path "checkpoints/llava-fastvithd_1.5b_stage3" --image-file "C:\Users\anmol\Downloads\testforapple\man.jpg" --prompt "Describe the image." 
+python predict.py --model-path "ml-fastvlm\llava-fastvithd_1.5b_stage3" --image-file "C:\Users\student\Pictures\Screenshots\man-working2.jpg" --prompt "Describe the image in one sentence" 

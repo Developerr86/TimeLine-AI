@@ -150,5 +150,69 @@
       "completion_tokens": 2803,
       "total_tokens": 4416
     }
+  },
+  {
+    "timestamp": "2025-11-21T13:30:09.560882",
+    "model": "ollama",
+    "model_name": "qwen3-vl:4b",
+    "image_path": "screenshots\\uploaded_20251121_132927_375648.png",
+    "title": "Edge Update Complete: Next Steps Prompted",
+    "summary": "The user has successfully updated Microsoft Edge and is prompted to click 'Next' to proceed with the update process.",
+    "raw_response": "{\n  \"title\": \"Edge Update Complete: Next Steps Prompted\",\n  \"summary\": \"The user has successfully updated Microsoft Edge and is prompted to click 'Next' to proceed with the update process.\"\n}",
+    "token_usage": {
+      "prompt_tokens": 1613,
+      "completion_tokens": 2305,
+      "total_tokens": 3918
+    },
+    "uploaded": true
+  },
+  {
+    "timestamp": "2025-11-21T13:31:11.924312",
+    "model": "ollama",
+    "model_name": "qwen3-vl:4b",
+    "image_path": "screenshots\\screenshot_20251121_133047_522379.png",
+    "title": "Timeline AI Update, Test Message, and Ray Tracing Study",
+    "summary": "The user is tracking their Timeline AI activities, which include completing an Edge update, composing a test message to validate functionality, and watching a YouTube tutorial on ray tracing concepts.",
+    "raw_response": "{\n  \"title\": \"Timeline AI Update, Test Message, and Ray Tracing Study\",\n  \"summary\": \"The user is tracking their Timeline AI activities, which include completing an Edge update, composing a test message to validate functionality, and watching a YouTube tutorial on ray tracing concepts.\"\n}",
+    "token_usage": {
+      "prompt_tokens": 1613,
+      "completion_tokens": 1577,
+      "total_tokens": 3190
+    }
+  },
+  {
+    "timestamp": "2025-11-21T14:51:32.707390",
+    "model": "ollama",
+    "model_name": "qwen3-vl:4b",
+    "image_path": "screenshots\\uploaded_20251121_145016_250225.png",
+    "title": "Business Professional Working on Laptop",
+    "summary": "The user is actively engaged in work tasks on their laptop while seated at a desk in a modern office setting.",
+    "raw_response": "{\n  \"title\": \"Business Professional Working on Laptop\",\n  \"summary\": \"The user is actively engaged in work tasks on their laptop while seated at a desk in a modern office setting.\"\n}",
+    "token_usage": {
+      "prompt_tokens": 2193,
+      "completion_tokens": 2167,
+      "total_tokens": 4360
+    },
+    "uploaded": true
+  },
+  {
+    "timestamp": "2025-11-21T15:04:25.880745",
+    "model": "remote",
+    "model_name": "http://localhost:5001/predict",
+    "image_path": "screenshots\\screenshot_20251121_150420_901378.png",
+    "title": "Shopping for a Samsung Odyssey G5 Monitor",
+    "summary": "The user is browsing for a Samsung Odyssey G5 monitor on Flipkart, looking to purchase it with a discount offer.",
+    "raw_response": "{\n  \"title\": \"Shopping for a Samsung Odyssey G5 Monitor\",\n  \"summary\": \"The user is browsing for a Samsung Odyssey G5 monitor on Flipkart, looking to purchase it with a discount offer.\"\n}",
+    "token_usage": {}
+  },
+  {
+    "timestamp": "2025-11-21T15:04:35.206619",
+    "model": "remote",
+    "model_name": "http://localhost:5001/predict",
+    "image_path": "screenshots\\screenshot_20251121_150430_891257.png",
+    "title": "Shopping for a Samsung Odyssey G5 Monitor",
+    "summary": "The user is browsing for a monitor on a shopping website.",
+    "raw_response": "{\n  \"title\": \"Shopping for a Samsung Odyssey G5 Monitor\",\n  \"summary\": \"The user is browsing for a monitor on a shopping website.\"\n}",
+    "token_usage": {}
   }
 ]

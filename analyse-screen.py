@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from datetime import datetime
 import google.generativeai as genai
+import requests
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -16,6 +17,7 @@ load_dotenv()
 OLLAMA_MODEL_NAME = os.getenv('OLLAMA_MODEL', 'qwen2.5vl:3b')
 GEMINI_MODEL_NAME = os.getenv('GEMINI_MODEL', 'gemini-2.5-pro')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+REMOTE_URL = os.getenv('REMOTE_URL', 'http://localhost:5001/predict')
 RESPONSES_FILE = "responses.json"
 
 def encode_image_to_base64(image_path: Path) -> str:
@@ -363,11 +365,124 @@ def generate_activity_summary_gemini(image_path: str):
         save_response(response_entry)
 
 
+def generate_activity_summary_remote(image_path: str, url: str):
+    """
+    Analyzes a screenshot using a remote server and generates a summary.
+    """
+    screenshot_path = Path(image_path)
+    if not screenshot_path.is_file():
+        print(f"❌ Error: Invalid file path provided: {image_path}")
+        return
+
+    print(f"Analysing Screenshot with Remote Server ({url}): {screenshot_path.name}...")
+
+    try:
+        prompt = """
+        You are an AI assistant analyzing a user's computer activity from a screenshot.
+        Your task is to describe what is happening on the screen and then create a summary of the activity.
+
+        1.  **Analyze the Screen:** Look closely at the applications, websites, and any visible text on the screen.
+            Be specific and factual. For example, instead of "coding", say "writing a Python function in VS Code".
+
+        2.  **Generate a JSON Summary:** Based on your analysis, create a title and a brief summary for this activity.
+            The title should be conversational and 5-8 words long.
+            The summary should be 1-2 sentences describing the main task.
+
+        Respond with ONLY a valid JSON object in the following format:
+        {
+          "title": "A short, conversational title of the activity",
+          "summary": "A 1-2 sentence summary of what the user is doing."
+        }
+        """
+
+        with open(screenshot_path, 'rb') as img_file:
+            files = {'image': img_file}
+            data = {'prompt': prompt}
+            
+            print(f"🧠 Sending request to {url}...")
+            response = requests.post(url, files=files, data=data)
+            
+            if response.status_code == 200:
+                print("✅ Remote server responded")
+                
+                response_json = response.json()
+                response_content = response_json.get('response')
+                
+                if not response_content:
+                     if isinstance(response_json, dict) and 'title' in response_json:
+                         response_content = json.dumps(response_json)
+                     else:
+                         response_content = str(response_json)
+
+                if response_content.strip().startswith("```json"):
+                    json_str = response_content.strip()[7:-3].strip()
+                elif response_content.strip().startswith("```"):
+                    lines = response_content.strip().split('\n')
+                    json_str = '\n'.join(lines[1:-1]).strip()
+                else:
+                    json_str = response_content
+                
+                try:
+                    summary_data = json.loads(json_str)
+                    title = summary_data.get("title", "No Title Provided")
+                    summary = summary_data.get("summary", "No Summary Provided")
+                except json.JSONDecodeError:
+                    title = "Remote Analysis"
+                    summary = response_content[:500]
+
+                print("\n--- Activity Summary ---")
+                print(f"🏷️  **Title:** {title}")
+                print(f"📝 **Summary:** {summary}")
+                print("----------------------\n")
+
+                response_entry = {
+                    "timestamp": datetime.now().isoformat(),
+                    "model": "remote",
+                    "model_name": url,
+                    "image_path": str(screenshot_path),
+                    "title": title,
+                    "summary": summary,
+                    "raw_response": response_content,
+                    "token_usage": {}
+                }
+                save_response(response_entry)
+                print(f"✅ Response saved to {RESPONSES_FILE}")
+
+            else:
+                print(f"❌ Remote server error: {response.status_code}")
+                print(response.text)
+                
+                response_entry = {
+                    "timestamp": datetime.now().isoformat(),
+                    "model": "remote",
+                    "model_name": url,
+                    "image_path": str(screenshot_path),
+                    "error": f"Remote error: {response.status_code}",
+                    "raw_response": response.text
+                }
+                save_response(response_entry)
+
+    except Exception as e:
+        print(f"❌ An error occurred while communicating with remote server: {e}")
+        response_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "model": "remote",
+            "model_name": url,
+            "image_path": str(screenshot_path),
+            "error": str(e)
+        }
+        save_response(response_entry)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Analyze screenshots using AI vision models")
     parser.add_argument("image_path", help="Path to the screenshot image")
     parser.add_argument("-g", "--gemini", action="store_true", 
                        help="Use Google Gemini model instead of local Ollama")
+    parser.add_argument("-r", "--remote", action="store_true",
+                       help="Use a remote server (e.g. ml-fastvlm)")
+    parser.add_argument("--url", type=str, default=REMOTE_URL,
+                       help=f"URL for remote server (default: {REMOTE_URL})")
     
     args = parser.parse_args()
     
@@ -377,5 +492,7 @@ if __name__ == "__main__":
     
     if args.gemini:
         generate_activity_summary_gemini(args.image_path)
+    elif args.remote:
+        generate_activity_summary_remote(args.image_path, args.url)
     else:
         generate_activity_summary_ollama(args.image_path)
