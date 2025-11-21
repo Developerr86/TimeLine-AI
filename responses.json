@@ -66,5 +66,89 @@
       "completion_tokens": 1040,
       "total_tokens": 2653
     }
+  },
+  {
+    "timestamp": "2025-11-14T12:54:26.747137",
+    "model": "ollama",
+    "model_name": "qwen3-vl:4b",
+    "image_path": "screenshots\\screenshot_20251114_125410_710025.png",
+    "title": "Learning GPU Architecture in a YouTube Tutorial",
+    "summary": "The user is watching a Branch Education YouTube video explaining how GPUs process data for video game graphics, with on-screen captions detailing GPU functionality.",
+    "raw_response": "{\n  \"title\": \"Learning GPU Architecture in a YouTube Tutorial\",\n  \"summary\": \"The user is watching a Branch Education YouTube video explaining how GPUs process data for video game graphics, with on-screen captions detailing GPU functionality.\"\n}",
+    "token_usage": {
+      "prompt_tokens": 1613,
+      "completion_tokens": 843,
+      "total_tokens": 2456
+    }
+  },
+  {
+    "timestamp": "2025-11-14T12:56:36.729797",
+    "model": "ollama",
+    "model_name": "qwen3-vl:4b",
+    "image_path": "screenshots\\screenshot_20251114_125555_815590.png",
+    "title": "Watching GPU Video While Researching Blockchain",
+    "summary": "The user is currently viewing a YouTube tutorial on GPU architecture and actively searching for information about blockchain concepts.",
+    "raw_response": "{\n  \"title\": \"Watching GPU Video While Researching Blockchain\",\n  \"summary\": \"The user is currently viewing a YouTube tutorial on GPU architecture and actively searching for information about blockchain concepts.\"\n}",
+    "token_usage": {
+      "prompt_tokens": 1613,
+      "completion_tokens": 2712,
+      "total_tokens": 4325
+    }
+  },
+  {
+    "timestamp": "2025-11-14T12:57:10.117191",
+    "model": "ollama",
+    "model_name": "qwen3-vl:4b",
+    "image_path": "screenshots\\screenshot_20251114_125641_733779.png",
+    "title": "Running Flask App for Screenshot Project",
+    "summary": "The user is serving a Flask application in debug mode while managing screenshot assets for their web development project.",
+    "raw_response": "{\n  \"title\": \"Running Flask App for Screenshot Project\",\n  \"summary\": \"The user is serving a Flask application in debug mode while managing screenshot assets for their web development project.\"\n}",
+    "token_usage": {
+      "prompt_tokens": 1613,
+      "completion_tokens": 1891,
+      "total_tokens": 3504
+    }
+  },
+  {
+    "timestamp": "2025-11-14T12:57:39.435936",
+    "model": "ollama",
+    "model_name": "qwen3-vl:4b",
+    "image_path": "screenshots\\screenshot_20251114_125715_123203.png",
+    "title": "Configuring Timeline AI Screenshot and Model Settings",
+    "summary": "The user is adjusting screenshot interval, similarity threshold, and AI model details for Timeline AI configuration.",
+    "raw_response": "{\n  \"title\": \"Configuring Timeline AI Screenshot and Model Settings\",\n  \"summary\": \"The user is adjusting screenshot interval, similarity threshold, and AI model details for Timeline AI configuration.\"\n}",
+    "token_usage": {
+      "prompt_tokens": 1613,
+      "completion_tokens": 1593,
+      "total_tokens": 3206
+    }
+  },
+  {
+    "timestamp": "2025-11-14T12:58:22.093695",
+    "model": "ollama",
+    "model_name": "qwen3-vl:4b",
+    "image_path": "screenshots\\screenshot_20251114_125811_889180.png",
+    "title": "Understanding Ray Tracing in Gaming Videos",
+    "summary": "The user is watching an educational YouTube tutorial explaining how ray tracing works in video game and movie rendering processes.",
+    "raw_response": "{\n  \"title\": \"Understanding Ray Tracing in Gaming Videos\",\n  \"summary\": \"The user is watching an educational YouTube tutorial explaining how ray tracing works in video game and movie rendering processes.\"\n}",
+    "token_usage": {
+      "prompt_tokens": 1613,
+      "completion_tokens": 527,
+      "total_tokens": 2140
+    }
+  },
+  {
+    "timestamp": "2025-11-14T12:59:07.104729",
+    "model": "ollama",
+    "model_name": "qwen3-vl:4b",
+    "image_path": "screenshots\\screenshot_20251114_125824_110569.png",
+    "title": "Writing a Test Message for Timeline AI",
+    "summary": "The user is composing a test string in a code editor to validate or check functionality related to Timeline AI.",
+    "raw_response": "{\n  \"title\": \"Writing a Test Message for Timeline AI\",\n  \"summary\": \"The user is composing a test string in a code editor to validate or check functionality related to Timeline AI.\"\n}",
+    "token_usage": {
+      "prompt_tokens": 1613,
+      "completion_tokens": 2803,
+      "total_tokens": 4416
+    }
   }
 ]
