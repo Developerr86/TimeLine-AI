@@ -5,7 +5,7 @@ An AI-powered activity timeline tracker that automatically captures, analyzes, a
 ## Features
 
 - 📸 **Automatic Screenshot Capture**: Takes screenshots at configurable intervals
-- 🧠 **AI-Powered Analysis**: Uses Ollama (local) or Google Gemini to analyze screen content
+- 🧠 **AI-Powered Analysis**: Uses Ollama (local), Google Gemini, or a custom remote server to analyze screen content
 - 🔍 **Smart Deduplication**: Uses SSIM algorithm to eliminate similar screenshots (95% threshold)
 - 🌐 **Web Interface**: Beautiful Flask-based dashboard to view your activity timeline
 - ⚙️ **Configurable**: Adjust capture interval, model selection, and similarity threshold
@@ -82,6 +82,9 @@ python analyse-screen.py path/to/screenshot.png
 
 # Analyze with Gemini
 python analyse-screen.py -g path/to/screenshot.png
+
+# Analyze with Remote Server
+python analyse-screen.py -r --url http://localhost:5001/predict path/to/screenshot.png
 ```
 
 ## Configuration
@@ -90,8 +93,8 @@ Access the configuration page at `http://localhost:5000/config` to adjust:
 
 - **Screenshot Interval**: How often to capture (1-300 seconds)
 - **Similarity Threshold**: SSIM threshold for duplicate detection (0-1)
-- **Model Type**: Choose between Ollama (local) or Gemini (cloud)
-- **Model Names**: Specify which AI model to use
+- **Model Type**: Choose between Ollama (local), Gemini (cloud), or Remote Server
+- **Model Names/URL**: Specify which AI model or server URL to use
 
 ## How It Works
 
@@ -142,6 +145,7 @@ TimeLine-AI/
 See [requirements.txt](requirements.txt) for full list:
 - Flask (web framework)
 - Pillow (screenshot capture)
+- requests (HTTP client)
 - opencv-python (image processing)
 - scikit-image (SSIM comparison)
 - ollama (Ollama API client)
@@ -152,6 +156,7 @@ See [requirements.txt](requirements.txt) for full list:
 - All screenshots are stored locally in the `screenshots/` folder
 - When using Ollama, all processing happens on your machine
 - When using Gemini, screenshots are sent to Google's API
+- When using Remote Server, screenshots are sent to your configured URL
 - No data is shared with third parties beyond your chosen AI provider
 
 ## License

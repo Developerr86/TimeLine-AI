@@ -10,6 +10,7 @@ from PIL import ImageGrab, Image
 import numpy as np
 from skimage.metrics import structural_similarity as ssim
 import cv2
+import requests
 import ollama
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -28,6 +29,7 @@ DEFAULT_CONFIG = {
     "model_type": "ollama",
     "ollama_model": os.getenv('OLLAMA_MODEL', 'qwen2.5vl:3b'),
     "gemini_model": os.getenv('GEMINI_MODEL', 'gemini-2.5-pro'),
+    "Apple_FastVLM": os.getenv('REMOTE_URL', 'http://localhost:5001/predict'),
     "similarity_threshold": 0.95,
     "enabled": False
 }
@@ -226,6 +228,88 @@ def analyze_screenshot_gemini(image_path, model_name):
             'error': str(e)
         }
 
+def analyze_screenshot_remote(image_path, url):
+    try:
+        prompt = """
+        You are an AI assistant analyzing a user's computer activity from a screenshot.
+        Your task is to describe what is happening on the screen and then create a summary of the activity.
+
+        1.  **Analyze the Screen:** Look closely at the applications, websites, and any visible text on the screen.
+            Be specific and factual. For example, instead of "coding", say "writing a Python function in VS Code".
+
+        2.  **Generate a JSON Summary:** Based on your analysis, create a title and a brief summary for this activity.
+            The title should be conversational and 5-8 words long.
+            The summary should be 1-2 sentences describing the main task.
+
+        Respond with ONLY a valid JSON object in the following format:
+        {
+          "title": "A short, conversational title of the activity",
+          "summary": "A 1-2 sentence summary of what the user is doing."
+        }
+        """
+
+        with open(image_path, 'rb') as img_file:
+            files = {'image': img_file}
+            data = {'prompt': prompt}
+            
+            response = requests.post(url, files=files, data=data)
+            
+            if response.status_code == 200:
+                # Assuming the remote server follows the structure implied by test_client.py
+                # which expects response.json().get('response')
+                response_json = response.json()
+                response_content = response_json.get('response')
+                
+                if not response_content:
+                    # Fallback if the key 'response' is missing, maybe the whole body is the content
+                    if isinstance(response_json, dict) and 'title' in response_json:
+                         # It returned the JSON object directly
+                         return {
+                            'title': response_json.get('title', 'No Title'),
+                            'summary': response_json.get('summary', 'No Summary'),
+                            'raw_response': json.dumps(response_json),
+                            'token_usage': {}
+                        }
+                    response_content = str(response_json)
+                
+                # Parse the content which is expected to be the JSON string
+                if response_content.strip().startswith("```json"):
+                    json_str = response_content.strip()[7:-3].strip()
+                elif response_content.strip().startswith("```"):
+                    lines = response_content.strip().split('\n')
+                    json_str = '\n'.join(lines[1:-1]).strip()
+                else:
+                    json_str = response_content
+                
+                try:
+                    summary_data = json.loads(json_str)
+                    return {
+                        'title': summary_data.get('title', 'No Title'),
+                        'summary': summary_data.get('summary', 'No Summary'),
+                        'raw_response': response_content,
+                        'token_usage': {}
+                    }
+                except json.JSONDecodeError:
+                    # If it's not JSON, treat the whole text as summary
+                    return {
+                        'title': 'Remote Analysis',
+                        'summary': response_content[:500],
+                        'raw_response': response_content,
+                        'token_usage': {}
+                    }
+            else:
+                return {
+                    'title': 'Error',
+                    'summary': f'Remote server error: {response.status_code}',
+                    'error': response.text
+                }
+    except Exception as e:
+        return {
+            'title': 'Error',
+            'summary': f'Analysis failed: {str(e)}',
+            'error': str(e)
+        }
+
 def capture_loop():
     global stop_capture, latest_activity
     config = load_config()
@@ -260,6 +344,9 @@ def capture_loop():
                 if config['model_type'] == 'ollama':
                     result = analyze_screenshot_ollama(screenshot_path, config['ollama_model'])
                     model_name = config['ollama_model']
+                elif config['model_type'] == 'remote':
+                    result = analyze_screenshot_remote(screenshot_path, config['remote_url'])
+                    model_name = config['remote_url']
                 else:
                     result = analyze_screenshot_gemini(screenshot_path, config['gemini_model'])
                     model_name = config['gemini_model']
@@ -310,6 +397,7 @@ def api_config():
         config['model_type'] = data.get('model_type', 'ollama')
         config['ollama_model'] = data.get('ollama_model', config['ollama_model'])
         config['gemini_model'] = data.get('gemini_model', config['gemini_model'])
+        config['remote_url'] = data.get('remote_url', config.get('remote_url', 'http://localhost:5001/predict'))
         config['similarity_threshold'] = float(data.get('similarity_threshold', 0.95))
         
         save_config(config)
@@ -400,6 +488,9 @@ def upload_image():
         if config['model_type'] == 'ollama':
             result = analyze_screenshot_ollama(filepath, config['ollama_model'])
             model_name = config['ollama_model']
+        elif config['model_type'] == 'remote':
+            result = analyze_screenshot_remote(filepath, config['remote_url'])
+            model_name = config['remote_url']
         else:
             result = analyze_screenshot_gemini(filepath, config['gemini_model'])
             model_name = config['gemini_model']
