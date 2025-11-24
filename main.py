@@ -31,6 +31,9 @@ DEFAULT_CONFIG = {
     "gemini_model": os.getenv('GEMINI_MODEL', 'gemini-2.5-pro'),
     "Apple_FastVLM": os.getenv('REMOTE_URL', 'http://localhost:5001/predict'),
     "similarity_threshold": 0.95,
+    "notes_history_limit": 5,
+    "notes_model_provider": "gemini",
+    "notes_ollama_model": "llama3",
     "enabled": False
 }
 
@@ -399,6 +402,9 @@ def api_config():
         config['gemini_model'] = data.get('gemini_model', config['gemini_model'])
         config['remote_url'] = data.get('remote_url', config.get('remote_url', 'http://localhost:5001/predict'))
         config['similarity_threshold'] = float(data.get('similarity_threshold', 0.95))
+        config['notes_history_limit'] = int(data.get('notes_history_limit', 5))
+        config['notes_model_provider'] = data.get('notes_model_provider', 'gemini')
+        config['notes_ollama_model'] = data.get('notes_ollama_model', 'llama3')
         
         save_config(config)
         return jsonify({'status': 'success', 'config': config})
@@ -463,6 +469,86 @@ def api_latest_activity():
 @app.route('/screenshots/<path:filename>')
 def serve_screenshot(filename):
     return send_from_directory(SCREENSHOTS_DIR, filename)
+
+@app.route('/api/generate_notes', methods=['POST'])
+def generate_notes():
+    try:
+        config = load_config()
+        responses = load_responses()
+        
+        # Get the limit from config, default to 5 if not set
+        limit = config.get('notes_history_limit', 5)
+        
+        # Get the last N responses
+        recent_responses = responses[-limit:] if responses else []
+        
+        if not recent_responses:
+            return jsonify({
+                'status': 'error', 
+                'message': 'No recent activities to generate notes from.'
+            }), 400
+            
+        # Prepare the prompt
+        activities_text = ""
+        for i, resp in enumerate(recent_responses):
+            timestamp = resp.get('timestamp', 'Unknown time')
+            title = resp.get('title', 'No Title')
+            summary = resp.get('summary', 'No Summary')
+            activities_text += f"{i+1}. [{timestamp}] {title}: {summary}\n"
+            
+        prompt = f"""
+        You are an intelligent assistant helping a user review their recent computer activity.
+        Here are the user's last {len(recent_responses)} recorded activities:
+        
+        {activities_text}
+        
+        Based on these activities, please generate a concise set of notes.
+        - Summarize the main themes or tasks the user was working on.
+        - Highlight any potential distractions if apparent.
+        - Estimate roughly how much time was spent on different contexts (coding, browsing, etc.) if possible.
+        - Keep the tone professional and helpful.
+        - Format the output with Markdown (bullet points, bold text, etc.).
+        """
+        
+        provider = config.get('notes_model_provider', 'gemini')
+        
+        if provider == 'ollama':
+             # Use Ollama
+            model_name = config.get('notes_ollama_model', 'llama3')
+            client = ollama.Client()
+            response = client.chat(
+                model=model_name,
+                messages=[{
+                    'role': 'user',
+                    'content': prompt
+                }]
+            )
+            response_text = response['message']['content']
+        else:
+            # Use Gemini (Default)
+            # Check for Gemini API key
+            api_key = os.getenv('GEMINI_API_KEY')
+            if not api_key:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'GEMINI_API_KEY not set. Please configure it in .env file.'
+                }), 400
+            
+            # Configure Gemini
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(config.get('gemini_model', 'gemini-2.5-pro'))
+            response = model.generate_content(prompt)
+            response_text = response.text
+        
+        return jsonify({
+            'status': 'success',
+            'notes': response_text,
+            'activity_count': len(recent_responses)
+        })
+        
+    except Exception as e:
+        print(f"❌ Error generating notes: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/upload_image', methods=['POST'])
 def upload_image():

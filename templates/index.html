@@ -89,6 +89,22 @@
                     <div class="stat-value" id="captureInterval">-</div>
                 </div>
             </div>
+            
+            <!-- Notes Section -->
+            <div class="notes-section" style="margin-top: 20px; margin-bottom: 20px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0; display: flex; align-items: center; gap: 10px;">
+                        📝 AI Activity Notes 
+                        <span style="font-size: 0.8em; color: #666; font-weight: normal;">(Based on recent history)</span>
+                    </h3>
+                    <button id="generateNotesBtn" class="action-btn" onclick="generateNotes()" style="background-color: #6c5ce7; color: white;">
+                        ✨ Generate Notes
+                    </button>
+                </div>
+                <div id="notesContent" style="min-height: 50px; color: #444; line-height: 1.6;">
+                    <p style="color: #888; font-style: italic;">Click "Generate Notes" to analyze your recent activities using Gemini...</p>
+                </div>
+            </div>
 
             <!-- Timeline Cards -->
             <div class="timeline-grid">
@@ -316,6 +332,48 @@
                 showNotification('⏸️ Screenshot capture stopped!', 'info');
             } catch (error) {
                 showNotification('❌ Error stopping capture: ' + error, 'error');
+            }
+        }
+
+        async function generateNotes() {
+            const btn = document.getElementById('generateNotesBtn');
+            const content = document.getElementById('notesContent');
+            
+            // Disable button and show loading state
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-small"></span> Generating...';
+            content.innerHTML = '<div style="display: flex; align-items: center; gap: 10px; color: #666;"><div class="spinner" style="width: 20px; height: 20px; border-width: 2px;"></div> Analyzing your recent activities...</div>';
+            
+            try {
+                const response = await fetch('/api/generate_notes', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    // Convert markdown-like text to simple HTML (basic support)
+                    // For a production app, you'd want a real markdown library like marked.js
+                    let formattedNotes = data.notes
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+                        .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic
+                        .replace(/- (.*?)(?=\n|$)/g, '<li>$1</li>') // List items
+                        .replace(/\n/g, '<br>'); // Line breaks
+                        
+                    // Wrap lists if present
+                    if (formattedNotes.includes('<li>')) {
+                         formattedNotes = formattedNotes.replace(/(<li>.*?<\/li>)+/g, '<ul>$&</ul>');
+                    }
+                    
+                    content.innerHTML = formattedNotes;
+                    showNotification(`✅ Notes generated from ${data.activity_count} activities`, 'success');
+                } else {
+                    content.innerHTML = `<p style="color: #e74c3c;">❌ Error: ${data.message}</p>`;
+                    showNotification('❌ ' + data.message, 'error');
+                }
+            } catch (error) {
+                content.innerHTML = `<p style="color: #e74c3c;">❌ Error connecting to server</p>`;
+                showNotification('❌ Error: ' + error, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '✨ Generate Notes';
             }
         }
 
