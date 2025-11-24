@@ -59,7 +59,31 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="model_type">AI Model Type</label>
+                            <label for="notes_history_limit">Notes History Limit</label>
+                            <input type="number" id="notes_history_limit" name="notes_history_limit" 
+                                   value="{{ config.notes_history_limit if config.notes_history_limit else 5 }}" min="1" max="100" required>
+                            <small>Number of recent activities to use when generating notes (Default: 5)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="notes_model_provider">Notes AI Provider</label>
+                            <select id="notes_model_provider" name="notes_model_provider" onchange="toggleNotesModelOptions()">
+                                <option value="gemini" {% if config.notes_model_provider == 'gemini' %}selected{% endif %}>Google Gemini (Cloud)</option>
+                                <option value="ollama" {% if config.notes_model_provider == 'ollama' %}selected{% endif %}>Ollama (Local)</option>
+                            </select>
+                            <small>Choose which AI provider to use for generating notes.</small>
+                        </div>
+
+                        <div class="form-group" id="notesOllamaModelGroup" style="display: none;">
+                            <label for="notes_ollama_model">Ollama Notes Model</label>
+                            <input type="text" id="notes_ollama_model" name="notes_ollama_model" value="{{ config.notes_ollama_model if config.notes_ollama_model else 'llama3' }}">
+                            <small>Text model for notes (e.g., llama3, mistral, qwen2.5)</small>
+                        </div>
+                        
+                        <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+
+                        <div class="form-group">
+                            <label for="model_type">Screenshot AI Model Type</label>
                             <select id="model_type" name="model_type" onchange="toggleModelOptions()">
                                 <option value="ollama" {% if config.model_type == 'ollama' %}selected{% endif %}>Ollama (Local)</option>
                                 <option value="gemini" {% if config.model_type == 'gemini' %}selected{% endif %}>Google Gemini (Cloud)</option>
@@ -132,6 +156,12 @@
             document.getElementById('remoteModelGroup').style.display = 
                 modelType === 'remote' ? 'block' : 'none';
         }
+        
+        function toggleNotesModelOptions() {
+            const notesProvider = document.getElementById('notes_model_provider').value;
+            document.getElementById('notesOllamaModelGroup').style.display = 
+                notesProvider === 'ollama' ? 'block' : 'none';
+        }
 
         async function saveConfig(event) {
             event.preventDefault();
@@ -143,7 +173,10 @@
                 model_type: formData.get('model_type'),
                 ollama_model: formData.get('ollama_model'),
                 gemini_model: formData.get('gemini_model'),
-                remote_url: formData.get('remote_url')
+                remote_url: formData.get('remote_url'),
+                notes_history_limit: parseInt(formData.get('notes_history_limit')),
+                notes_model_provider: formData.get('notes_model_provider'),
+                notes_ollama_model: formData.get('notes_ollama_model')
             };
             
             try {
@@ -167,6 +200,7 @@
         }
 
         toggleModelOptions();
+        toggleNotesModelOptions();
     </script>
 </body>
 </html>
