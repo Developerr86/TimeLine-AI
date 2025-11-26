@@ -116,6 +116,22 @@
                         </div>
                     </form>
                 </div>
+                
+                <div class="config-panel" style="margin-top: 20px; border: 1px solid #e74c3c;">
+                    <h2 style="color: #e74c3c;">⚠️ Danger Zone</h2>
+                    <p>These actions cannot be undone.</p>
+                    
+                    <div class="form-group">
+                        <label>Clear Context</label>
+                        <p style="color: #666; font-size: 0.9em; margin-top: 5px;">
+                            This will delete all captured screenshots and clear the activity history (responses.json).
+                            Use this to start fresh.
+                        </p>
+                        <button type="button" onclick="clearContext()" class="btn-danger" style="background-color: #e74c3c; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px;">
+                            🗑️ Clear All Data
+                        </button>
+                    </div>
+                </div>
 
                 <div class="info-panel">
                     <h3>💡 Tips & Information</h3>
@@ -193,6 +209,29 @@
                     window.location.href = '/';
                 } else {
                     alert('❌ Error saving configuration');
+                }
+            } catch (error) {
+                alert('❌ Error: ' + error);
+            }
+        }
+
+        async function clearContext() {
+            if (!confirm('⚠️ ARE YOU SURE?\n\nThis will PERMANENTLY DELETE all screenshots and activity history.\n\nThis action cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/clear_context', {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    alert('✅ All data has been cleared successfully.');
+                    window.location.href = '/';
+                } else {
+                    alert('❌ Error clearing data: ' + result.message);
                 }
             } catch (error) {
                 alert('❌ Error: ' + error);

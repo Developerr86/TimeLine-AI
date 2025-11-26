@@ -7,7 +7,7 @@
   "enabled": false,
   "remote_url": "http://localhost:5001/predict",
   "Apple_FastVLM": "http://localhost:5001/predict",
-  "notes_history_limit": 5,
+  "notes_history_limit": 4,
   "notes_model_provider": "ollama",
   "notes_ollama_model": "gemma3:1b"
 }
