@@ -610,6 +610,45 @@ def upload_image():
         print(f"❌ Error processing upload: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/clear_context', methods=['POST'])
+def clear_context():
+    try:
+        # Stop capture if running
+        config = load_config()
+        was_running = config.get('enabled', False)
+        
+        if was_running:
+            stop_capture.set()
+            # Update config to disabled
+            config['enabled'] = False
+            save_config(config)
+            
+        # Clear responses.json
+        with open(RESPONSES_FILE, 'w', encoding='utf-8') as f:
+            json.dump([], f, indent=2)
+            
+        # Clear screenshots directory
+        if SCREENSHOTS_DIR.exists():
+            for file_path in SCREENSHOTS_DIR.glob('*'):
+                if file_path.is_file():
+                    try:
+                        file_path.unlink()
+                    except Exception as e:
+                        print(f"⚠️ Failed to delete {file_path}: {e}")
+                    
+        # Clear latest activity
+        global latest_activity
+        latest_activity = {"timestamp": None, "title": None, "screenshot_taken": False}
+        
+        return jsonify({
+            'status': 'success', 
+            'message': 'Context cleared successfully',
+            'was_running': was_running
+        })
+    except Exception as e:
+        print(f"❌ Error clearing context: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 if __name__ == '__main__':
     config = load_config()
     
