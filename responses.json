@@ -1,16 +1,5 @@
 [
   {
-    "timestamp": "2025-11-26T13:57:40.580367",
-    "model": "remote",
-    "model_name": "http://localhost:5001/predict",
-    "image_path": "screenshots\\uploaded_20251126_135736_396756.png",
-    "title": "Exploring DNA, Genes, and Genomes",
-    "summary": "The user is browsing educational content about the differences between DNA, genes, and genomes, likely for academic or personal interest.",
-    "raw_response": "{\n  \"title\": \"Exploring DNA, Genes, and Genomes\",\n  \"summary\": \"The user is browsing educational content about the differences between DNA, genes, and genomes, likely for academic or personal interest.\"\n}",
-    "token_usage": {},
-    "uploaded": true
-  },
-  {
     "timestamp": "2025-11-26T13:58:08.196505",
     "model": "remote",
     "model_name": "http://localhost:5001/predict",
@@ -82,5 +71,120 @@
     "summary": "The user is watching a YouTube video titled 'Botanical Science for Beginners' by UF/IFAS Extension Pinellas County, which is about plant cells. The video has a red border and a play button, and there is a thumbnail image of plant cells on the screen. The video has a play button, a play icon, and a progress bar showing the video is 5:23:01 out of 1:31:08. There is also a sidebar with additional information about the video, including the number of subscribers and views, and a search bar at the top of the screen.",
     "raw_response": "{\n  \"title\": \"Watching a YouTube video about plant cells\",\n  \"summary\": \"The user is watching a YouTube video titled 'Botanical Science for Beginners' by UF/IFAS Extension Pinellas County, which is about plant cells. The video has a red border and a play button, and there is a thumbnail image of plant cells on the screen. The video has a play button, a play icon, and a progress bar showing the video is 5:23:01 out of 1:31:08. There is also a sidebar with additional information about the video, including the number of subscribers and views, and a search bar at the top of the screen.\"\n}",
     "token_usage": {}
+  },
+  {
+    "timestamp": "2025-11-27T09:34:11.188235",
+    "model": "remote",
+    "model_name": "http://localhost:5001/predict",
+    "image_path": "screenshots\\screenshot_20251127_093405_986575.png",
+    "title": "Watching a YouTube video",
+    "summary": "The user is watching a YouTube video about Shakespeare's works, sponsored by Google Notebook.LM.",
+    "raw_response": "{\n  \"title\": \"Watching a YouTube video\",\n  \"summary\": \"The user is watching a YouTube video about Shakespeare's works, sponsored by Google Notebook.LM.\"\n}",
+    "token_usage": {}
+  },
+  {
+    "timestamp": "2025-11-27T09:34:20.353984",
+    "model": "remote",
+    "model_name": "http://localhost:5001/predict",
+    "image_path": "screenshots\\screenshot_20251127_093416_197543.png",
+    "title": "Exploring Large Language Models on YouTube",
+    "summary": "The user is watching a video on YouTube about large language models, specifically focusing on the basics for beginners.",
+    "raw_response": "{\n  \"title\": \"Exploring Large Language Models on YouTube\",\n  \"summary\": \"The user is watching a video on YouTube about large language models, specifically focusing on the basics for beginners.\"\n}",
+    "token_usage": {}
+  },
+  {
+    "timestamp": "2025-11-27T09:58:44.161493",
+    "model": "remote",
+    "model_name": "http://localhost:5001/predict",
+    "image_path": "screenshots\\screenshot_20251127_095839_483614.png",
+    "title": "Analyzing a user's computer activity",
+    "summary": "The user is browsing YouTube for educational content, specifically looking at generative pre-trained transformer models and AI-related topics.",
+    "raw_response": "{\n  \"title\": \"Analyzing a user's computer activity\",\n  \"summary\": \"The user is browsing YouTube for educational content, specifically looking at generative pre-trained transformer models and AI-related topics.\"\n}",
+    "token_usage": {}
+  },
+  {
+    "timestamp": "2025-11-27T10:12:04.629079",
+    "model": "remote",
+    "model_name": "http://localhost:5001/predict",
+    "image_path": "screenshots\\screenshot_20251127_101200_620319.png",
+    "title": "Writing a Python function in VS Code",
+    "summary": "The user is writing a Python function in Visual Studio Code.",
+    "raw_response": "{\n  \"title\": \"Writing a Python function in VS Code\",\n  \"summary\": \"The user is writing a Python function in Visual Studio Code.\"\n}",
+    "token_usage": {}
+  },
+  {
+    "timestamp": "2025-11-27T10:12:36.693899",
+    "model": "remote",
+    "model_name": "http://localhost:5001/predict",
+    "image_path": "screenshots\\screenshot_20251127_101231_703165.png",
+    "title": "Writing a Python function in VS Code",
+    "summary": "The user is writing a Python function in Visual Studio Code, which is a code editor and integrated development environment (IDE) for developers. The function is being defined in the file 'main.py' and is being executed in the terminal window. The user is also using the command line to navigate to the project directory and run the function in a production deployment environment.",
+    "raw_response": "{\n  \"title\": \"Writing a Python function in VS Code\",\n  \"summary\": \"The user is writing a Python function in Visual Studio Code, which is a code editor and integrated development environment (IDE) for developers. The function is being defined in the file 'main.py' and is being executed in the terminal window. The user is also using the command line to navigate to the project directory and run the function in a production deployment environment.\"\n}",
+    "token_usage": {}
+  },
+  {
+    "timestamp": "2025-11-27T10:12:45.451318",
+    "model": "remote",
+    "model_name": "http://localhost:5001/predict",
+    "image_path": "screenshots\\screenshot_20251127_101241_702809.png",
+    "title": "Writing a Python function in VS Code",
+    "summary": "The user is writing a Python function in Visual Studio Code, using the `response` module to print the response to the console.",
+    "raw_response": "{\n  \"title\": \"Writing a Python function in VS Code\",\n  \"summary\": \"The user is writing a Python function in Visual Studio Code, using the `response` module to print the response to the console.\"\n}",
+    "token_usage": {}
+  },
+  {
+    "timestamp": "2025-11-27T10:15:13.514718",
+    "model": "remote",
+    "model_name": "http://localhost:5001/predict",
+    "image_path": "screenshots\\screenshot_20251127_101508_776437.png",
+    "title": "Exploring YouTube and Learning",
+    "summary": "The user is browsing YouTube for educational content, specifically looking at a machine learning model and a fashion model, and is likely engaged in learning about AI and fashion design.",
+    "raw_response": "{\n  \"title\": \"Exploring YouTube and Learning\",\n  \"summary\": \"The user is browsing YouTube for educational content, specifically looking at a machine learning model and a fashion model, and is likely engaged in learning about AI and fashion design.\"\n}",
+    "token_usage": {}
+  },
+  {
+    "timestamp": "2025-11-27T10:15:32.225853",
+    "model": "remote",
+    "model_name": "http://localhost:5001/predict",
+    "image_path": "screenshots\\screenshot_20251127_101528_038762.png",
+    "title": "Watching YouTube videos",
+    "summary": "The user is watching YouTube videos, including a video about Transformers and another about AI and neural networks.",
+    "raw_response": "{\n  \"title\": \"Watching YouTube videos\",\n  \"summary\": \"The user is watching YouTube videos, including a video about Transformers and another about AI and neural networks.\"\n}",
+    "token_usage": {}
+  },
+  {
+    "timestamp": "2025-11-27T10:15:42.210151",
+    "model": "remote",
+    "model_name": "http://localhost:5001/predict",
+    "image_path": "screenshots\\screenshot_20251127_101537_230365.png",
+    "title": "Analyzing a user's computer activity",
+    "summary": "The user is using a web browser to watch a YouTube video about Transformers and is also using a tool to analyze the video's content, including questions about the video's content and the user's computer activity.",
+    "raw_response": "{\n  \"title\": \"Analyzing a user's computer activity\",\n  \"summary\": \"The user is using a web browser to watch a YouTube video about Transformers and is also using a tool to analyze the video's content, including questions about the video's content and the user's computer activity.\"\n}",
+    "token_usage": {}
+  },
+  {
+    "timestamp": "2025-11-27T10:15:51.649437",
+    "model": "remote",
+    "model_name": "http://localhost:5001/predict",
+    "image_path": "screenshots\\screenshot_20251127_101547_214557.png",
+    "title": "Analyzing a YouTube video",
+    "summary": "The user is watching a video about Transformers and LLMs, with a focus on matrix multiplications and neural networks.",
+    "raw_response": "{\n  \"title\": \"Analyzing a YouTube video\",\n  \"summary\": \"The user is watching a video about Transformers and LLMs, with a focus on matrix multiplications and neural networks.\"\n}",
+    "token_usage": {}
+  },
+  {
+    "timestamp": "2025-11-27T12:07:54.167306",
+    "model": "ollama",
+    "model_name": "qwen3-vl:4b",
+    "image_path": "screenshots\\uploaded_20251127_120605_272559.png",
+    "title": "Active code editing in Visual Studio Code",
+    "summary": "The user is typing and editing code within Visual Studio Code.",
+    "raw_response": "{\n  \"title\": \"Active code editing in Visual Studio Code\",\n  \"summary\": \"The user is typing and editing code within Visual Studio Code.\"\n}",
+    "token_usage": {
+      "prompt_tokens": 2193,
+      "completion_tokens": 1755,
+      "total_tokens": 3948
+    },
+    "uploaded": true
   }
 ]

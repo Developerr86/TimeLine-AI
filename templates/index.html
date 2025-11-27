@@ -68,6 +68,7 @@
                         <span id="statusText">Stopped</span>
                     </div>
                     <input type="file" id="imageUpload" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
+                    <button id="deleteSelectedBtn" class="action-btn delete-btn" onclick="deleteSelected()" style="display: none; background-color: #e74c3c;">🗑️ Delete Selected</button>
                     <button class="action-btn upload-btn" onclick="document.getElementById('imageUpload').click()">📤 Upload Image</button>
                     <button id="startBtn" class="action-btn start-btn" onclick="startCapture()">▶ Start</button>
                     <button id="stopBtn" class="action-btn stop-btn" onclick="stopCapture()" disabled>■ Stop</button>
@@ -112,6 +113,9 @@
                     {% for response in responses %}
                     <div class="activity-card">
                         <div class="card-header">
+                            <div class="card-select" style="margin-right: 10px;">
+                                <input type="checkbox" class="activity-checkbox" value="{{ response.timestamp }}" onchange="updateSelection()" style="transform: scale(1.5); cursor: pointer;">
+                            </div>
                             <div class="activity-icon">
                                 {% if 'code' in response.title.lower() or 'vs code' in response.title.lower() %}
                                 💻
@@ -374,6 +378,52 @@
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '✨ Generate Notes';
+            }
+        }
+
+        function updateSelection() {
+            const checkboxes = document.querySelectorAll('.activity-checkbox:checked');
+            const deleteBtn = document.getElementById('deleteSelectedBtn');
+            
+            if (checkboxes.length > 0) {
+                deleteBtn.style.display = 'inline-flex';
+                deleteBtn.textContent = `🗑️ Delete Selected (${checkboxes.length})`;
+            } else {
+                deleteBtn.style.display = 'none';
+            }
+        }
+
+        async function deleteSelected() {
+            const checkboxes = document.querySelectorAll('.activity-checkbox:checked');
+            const timestamps = Array.from(checkboxes).map(cb => cb.value);
+            
+            if (timestamps.length === 0) return;
+            
+            if (!confirm(`Are you sure you want to delete ${timestamps.length} activity(s)?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/delete_responses', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ timestamps: timestamps })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showNotification(`✅ Deleted ${data.deleted_count} activities`, 'success');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    showNotification('❌ Error: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showNotification('❌ Error: ' + error, 'error');
             }
         }
 

@@ -610,6 +610,47 @@ def upload_image():
         print(f"❌ Error processing upload: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/delete_responses', methods=['POST'])
+def delete_responses():
+    try:
+        data = request.json
+        timestamps_to_delete = data.get('timestamps', [])
+        
+        if not timestamps_to_delete:
+            return jsonify({'status': 'error', 'message': 'No items selected'}), 400
+            
+        responses = load_responses()
+        new_responses = []
+        deleted_count = 0
+        
+        for resp in responses:
+            if resp['timestamp'] in timestamps_to_delete:
+                # Delete the image file
+                if 'image_path' in resp and resp['image_path']:
+                    try:
+                        # Handle both string path and Path object (though JSON usually has string)
+                        image_path = Path(resp['image_path'])
+                        if image_path.exists():
+                            image_path.unlink()
+                    except Exception as e:
+                        print(f"⚠️ Failed to delete image {resp['image_path']}: {e}")
+                deleted_count += 1
+            else:
+                new_responses.append(resp)
+        
+        # Save the filtered list
+        with open(RESPONSES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(new_responses, f, indent=2, ensure_ascii=False)
+            
+        return jsonify({
+            'status': 'success', 
+            'deleted_count': deleted_count
+        })
+        
+    except Exception as e:
+        print(f"❌ Error deleting responses: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/clear_context', methods=['POST'])
 def clear_context():
     try:
