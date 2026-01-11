@@ -1,4 +1,5 @@
-from flask import Flask, render_template, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
+from flask_cors import CORS
 import threading
 import time
 import json
@@ -18,6 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for Electron frontend
 
 SCREENSHOTS_DIR = Path("screenshots")
 SCREENSHOTS_DIR.mkdir(exist_ok=True)
@@ -379,16 +381,8 @@ def capture_loop():
             print(f"❌ Error in capture loop: {e}")
             time.sleep(5)
 
-@app.route('/')
-def index():
-    responses = load_responses()
-    responses.reverse()
-    return render_template('index.html', responses=responses)
-
-@app.route('/config')
-def config_page():
-    config = load_config()
-    return render_template('config.html', config=config)
+# Note: Template routes removed - UI is now handled by React
+# The following API routes remain for the Electron app:
 
 @app.route('/api/config', methods=['GET', 'POST'])
 def api_config():

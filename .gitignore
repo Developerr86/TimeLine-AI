@@ -1,4 +1,31 @@
-/-p
-/samples
-/screenshots
-/ml-fastvlm
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+
+# Node
+node_modules/
+dist/
+dist-electron/
+
+# Project specific
+screenshots/
+samples/
+ml-fastvlm/
+timeline.db
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Electron
+out/
+
+# Misc
+-p

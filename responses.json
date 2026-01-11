@@ -1,86 +1,24 @@
 [
   {
-    "timestamp": "2025-11-26T13:57:40.580367",
+    "timestamp": "2026-01-09T18:50:28.571087",
     "model": "remote",
     "model_name": "http://localhost:5001/predict",
-    "image_path": "screenshots\\uploaded_20251126_135736_396756.png",
-    "title": "Exploring DNA, Genes, and Genomes",
-    "summary": "The user is browsing educational content about the differences between DNA, genes, and genomes, likely for academic or personal interest.",
-    "raw_response": "{\n  \"title\": \"Exploring DNA, Genes, and Genomes\",\n  \"summary\": \"The user is browsing educational content about the differences between DNA, genes, and genomes, likely for academic or personal interest.\"\n}",
+    "image_path": "screenshots\\uploaded_20260109_185017_770853.png",
+    "title": "Watching YouTube Videos",
+    "summary": "The user is browsing YouTube videos, specifically watching videos by Linkin Park and The Vodtrollers.",
+    "raw_response": "{\n  \"title\": \"Watching YouTube Videos\",\n  \"summary\": \"The user is browsing YouTube videos, specifically watching videos by Linkin Park and The Vodtrollers.\"\n}",
     "token_usage": {},
     "uploaded": true
   },
   {
-    "timestamp": "2025-11-26T13:58:08.196505",
+    "timestamp": "2026-01-09T19:53:56.351196",
     "model": "remote",
     "model_name": "http://localhost:5001/predict",
-    "image_path": "screenshots\\uploaded_20251126_135803_801690.png",
-    "title": "Learning about Evolutionary Biology and Ecology",
-    "summary": "The user is engaged in a MOOC (Massive Open Online Course) on Evolutionary Biology and Ecology on saylor.org, where they are learning about biological changes on a large scale and over millions of years.",
-    "raw_response": "{\n  \"title\": \"Learning about Evolutionary Biology and Ecology\",\n  \"summary\": \"The user is engaged in a MOOC (Massive Open Online Course) on Evolutionary Biology and Ecology on saylor.org, where they are learning about biological changes on a large scale and over millions of years.\"\n}",
+    "image_path": "screenshots\\uploaded_20260109_195346_684427.png",
+    "title": "Writing a Python function in VS Code",
+    "summary": "The user is coding a Python function in Visual Studio Code, likely for a project related to the 'ml-fasttext-server' repository on GitHub.",
+    "raw_response": "{\n  \"title\": \"Writing a Python function in VS Code\",\n  \"summary\": \"The user is coding a Python function in Visual Studio Code, likely for a project related to the 'ml-fasttext-server' repository on GitHub.\"\n}",
     "token_usage": {},
     "uploaded": true
-  },
-  {
-    "timestamp": "2025-11-26T14:04:55.143696",
-    "model": "remote",
-    "model_name": "http://localhost:5001/predict",
-    "image_path": "screenshots\\uploaded_20251126_140451_232559.png",
-    "title": "Exploring Evolutionary Biology",
-    "summary": "The user is browsing the Evolutionary Biology section of the University of Oxford's Biology department website, likely looking for information on the diversity of life on Earth and the methods used to study it.",
-    "raw_response": "{\n  \"title\": \"Exploring Evolutionary Biology\",\n  \"summary\": \"The user is browsing the Evolutionary Biology section of the University of Oxford's Biology department website, likely looking for information on the diversity of life on Earth and the methods used to study it.\"\n}",
-    "token_usage": {},
-    "uploaded": true
-  },
-  {
-    "timestamp": "2025-11-26T14:05:50.706865",
-    "model": "remote",
-    "model_name": "http://localhost:5001/predict",
-    "image_path": "screenshots\\uploaded_20251126_140546_620657.png",
-    "title": "Watching a YouTube video about Natural Selection",
-    "summary": "The user is watching a YouTube video about the concept of Natural Selection, featuring a cartoon scene with a blue creature and two green insects discussing a female insect's fate.",
-    "raw_response": "{\n  \"title\": \"Watching a YouTube video about Natural Selection\",\n  \"summary\": \"The user is watching a YouTube video about the concept of Natural Selection, featuring a cartoon scene with a blue creature and two green insects discussing a female insect's fate.\"\n}",
-    "token_usage": {},
-    "uploaded": true
-  },
-  {
-    "timestamp": "2025-11-26T14:57:15.904933",
-    "model": "remote",
-    "model_name": "http://localhost:5001/predict",
-    "image_path": "screenshots\\screenshot_20251126_145711_660323.png",
-    "title": "Watching a YouTube video",
-    "summary": "The user is watching a video about evolutionary biology on YouTube, with a focus on the science behind DNA and genetic engineering.",
-    "raw_response": "{\n  \"title\": \"Watching a YouTube video\",\n  \"summary\": \"The user is watching a video about evolutionary biology on YouTube, with a focus on the science behind DNA and genetic engineering.\"\n}",
-    "token_usage": {}
-  },
-  {
-    "timestamp": "2025-11-26T14:57:24.798240",
-    "model": "remote",
-    "model_name": "http://localhost:5001/predict",
-    "image_path": "screenshots\\screenshot_20251126_145720_911019.png",
-    "title": "Watching a YouTube video about fitness",
-    "summary": "The user is watching a fitness video on YouTube, specifically about the difference between a phenotype and a genotype.",
-    "raw_response": "{\n  \"title\": \"Watching a YouTube video about fitness\",\n  \"summary\": \"The user is watching a fitness video on YouTube, specifically about the difference between a phenotype and a genotype.\"\n}",
-    "token_usage": {}
-  },
-  {
-    "timestamp": "2025-11-26T14:57:34.306918",
-    "model": "remote",
-    "model_name": "http://localhost:5001/predict",
-    "image_path": "screenshots\\screenshot_20251126_145729_805188.png",
-    "title": "Watching a YouTube video about aposematism",
-    "summary": "The user is watching a YouTube video about aposematism, which is the use of mimicry to warn predators of their toxicity or unpalatability.",
-    "raw_response": "{\n  \"title\": \"Watching a YouTube video about aposematism\",\n  \"summary\": \"The user is watching a YouTube video about aposematism, which is the use of mimicry to warn predators of their toxicity or unpalatability.\"\n}",
-    "token_usage": {}
-  },
-  {
-    "timestamp": "2025-11-26T14:57:46.190837",
-    "model": "remote",
-    "model_name": "http://localhost:5001/predict",
-    "image_path": "screenshots\\screenshot_20251126_145739_310395.png",
-    "title": "Watching a YouTube video about plant cells",
-    "summary": "The user is watching a YouTube video titled 'Botanical Science for Beginners' by UF/IFAS Extension Pinellas County, which is about plant cells. The video has a red border and a play button, and there is a thumbnail image of plant cells on the screen. The video has a play button, a play icon, and a progress bar showing the video is 5:23:01 out of 1:31:08. There is also a sidebar with additional information about the video, including the number of subscribers and views, and a search bar at the top of the screen.",
-    "raw_response": "{\n  \"title\": \"Watching a YouTube video about plant cells\",\n  \"summary\": \"The user is watching a YouTube video titled 'Botanical Science for Beginners' by UF/IFAS Extension Pinellas County, which is about plant cells. The video has a red border and a play button, and there is a thumbnail image of plant cells on the screen. The video has a play button, a play icon, and a progress bar showing the video is 5:23:01 out of 1:31:08. There is also a sidebar with additional information about the video, including the number of subscribers and views, and a search bar at the top of the screen.\"\n}",
-    "token_usage": {}
   }
 ]
