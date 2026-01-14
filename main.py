@@ -437,6 +437,60 @@ def video_capture_status():
     })
 
 
+@app.route('/api/capture/video/transcribe', methods=['POST'])
+def transcribe_video():
+    """
+    Trigger transcription for a video session.
+    Request body: { "session_id": "uuid-here" }
+    
+    This should be called after stopping video capture to transcribe
+    the recorded audio. Transcription runs synchronously and may take
+    a while depending on audio length.
+    """
+    data = request.get_json()
+    if not data or not data.get('session_id'):
+        return jsonify({'status': 'error', 'message': 'session_id required'}), 400
+    
+    session_id = data['session_id']
+    
+    # Verify session exists
+    db = get_db()
+    try:
+        session = db.query(CaptureSession).filter_by(id=session_id).first()
+        if not session:
+            return jsonify({'status': 'error', 'message': 'Session not found'}), 404
+        if session.type != SessionType.VIDEO:
+            return jsonify({'status': 'error', 'message': 'Not a video session'}), 400
+    finally:
+        db.close()
+    
+    # Run transcription
+    handler = get_video_handler()
+    result = handler.transcribe_session(session_id)
+    
+    if result.get('success'):
+        return jsonify({
+            'status': 'success',
+            'session_id': session_id,
+            'transcript_length': len(result.get('transcript', '')),
+            'duration_seconds': result.get('duration_seconds'),
+            'message': 'Transcription complete'
+        })
+    else:
+        return jsonify({
+            'status': 'error',
+            'session_id': session_id,
+            'errors': result.get('errors', [])
+        }), 500
+
+
+@app.route('/api/capture/video/capabilities', methods=['GET'])
+def video_capture_capabilities():
+    """Get video capture capabilities (what's installed)."""
+    from scenarios.video_capture import VideoCaptureHandler
+    return jsonify(VideoCaptureHandler.get_capabilities())
+
+
 # ============================================================================
 # Session & Data Endpoints
 # ============================================================================

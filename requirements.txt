@@ -27,6 +27,10 @@ easyocr>=1.7.0
 soundcard>=0.4.0
 winsdk
 
+# Audio transcription (Video capture)
+faster-whisper>=1.0.0
+pydub>=0.25.0
+
 # Optional: VLM providers (for legacy compatibility)
 ollama>=0.3.0
 google-generativeai>=0.3.0

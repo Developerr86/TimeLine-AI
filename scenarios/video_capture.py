@@ -19,6 +19,31 @@ try:
 except ImportError:
     HAS_SKIMAGE = False
 
+# Whisper transcription (load on demand to save RAM)
+try:
+    from faster_whisper import WhisperModel
+    HAS_WHISPER = True
+except ImportError:
+    HAS_WHISPER = False
+
+# GPU availability detection
+def _detect_gpu() -> bool:
+    """Check if a compatible GPU is available for inference."""
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except ImportError:
+        pass
+    try:
+        # Alternative: check if CUDA is available via ctypes
+        import ctypes
+        ctypes.CDLL("nvcuda.dll")
+        return True
+    except (OSError, FileNotFoundError):
+        return False
+
+HAS_GPU = _detect_gpu()
+
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -306,10 +331,105 @@ class VideoCaptureHandler:
             "capture_interval": self.capture_interval,
             "ssim_threshold": self.ssim_threshold,
         }
+    
+    def transcribe_session(self, session_id: str) -> Dict[str, Any]:
+        """
+        Transcribe recorded audio for a video session using Whisper.
+        Loads Whisper model on demand to save RAM when not in use.
+        
+        Args:
+            session_id: The capture session ID
+            
+        Returns:
+            Dict with transcription status and content
+        """
+        result = {
+            "success": False,
+            "session_id": session_id,
+            "transcript": None,
+            "duration_seconds": None,
+            "errors": []
+        }
+        
+        if not HAS_WHISPER:
+            result["errors"].append("faster-whisper not installed. Run: pip install faster-whisper")
+            return result
+        
+        # Find audio file in session directory
+        session_dir = MEDIA_VIDEO_DIR / session_id
+        audio_path = session_dir / "audio.wav"
+        
+        if not audio_path.exists():
+            result["errors"].append(f"Audio file not found: {audio_path}")
+            return result
+        
+        try:
+            print(f"🎙️ Transcribing audio for session: {session_id}")
+            
+            # Load Whisper model on demand with GPU auto-detection
+            device = "cuda" if HAS_GPU else "cpu"
+            compute_type = "float16" if HAS_GPU else "int8"
+            
+            print(f"  📦 Loading Whisper 'tiny' model (device: {device})...")
+            model = WhisperModel("tiny", device=device, compute_type=compute_type)
+            
+            # Transcribe audio
+            print(f"  🔄 Processing audio...")
+            segments, info = model.transcribe(str(audio_path), beam_size=5)
+            
+            # Collect transcript text
+            transcript_parts = []
+            for segment in segments:
+                transcript_parts.append(segment.text)
+            
+            transcript = " ".join(transcript_parts).strip()
+            result["transcript"] = transcript
+            result["duration_seconds"] = info.duration
+            
+            print(f"  ✅ Transcription complete: {len(transcript)} chars, {info.duration:.1f}s audio")
+            
+            # Save transcript to database
+            db = get_db()
+            try:
+                text_record = CapturedText(
+                    session_id=session_id,
+                    content=transcript,
+                    source_url_or_path=str(audio_path),
+                    content_type="transcript"
+                )
+                db.add(text_record)
+                db.commit()
+                print(f"  💾 Transcript saved to database")
+                result["success"] = True
+                
+            except Exception as e:
+                db.rollback()
+                result["errors"].append(f"Database error: {str(e)}")
+            finally:
+                db.close()
+            
+            # Clean up model to free RAM
+            del model
+            
+        except Exception as e:
+            result["errors"].append(f"Transcription failed: {str(e)}")
+            print(f"  ❌ Transcription error: {e}")
+        
+        return result
+    
+    @staticmethod
+    def get_capabilities() -> Dict[str, Any]:
+        """Return available capabilities for video capture."""
+        return {
+            "ssim_deduplication": HAS_SKIMAGE,
+            "transcription": HAS_WHISPER,
+            "gpu_available": HAS_GPU,
+        }
 
 
 if __name__ == "__main__":
     # Quick test
     handler = VideoCaptureHandler()
-    print(f"SSIM available: {HAS_SKIMAGE}")
+    print(f"Capabilities: {VideoCaptureHandler.get_capabilities()}")
     print(f"Status: {handler.get_status()}")
+

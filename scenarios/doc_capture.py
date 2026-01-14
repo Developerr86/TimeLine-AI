@@ -23,6 +23,24 @@ try:
 except ImportError:
     HAS_EASYOCR = False
 
+# GPU availability detection
+def _detect_gpu() -> bool:
+    """Check if a compatible GPU is available for inference."""
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except ImportError:
+        pass
+    try:
+        # Alternative: check if CUDA is available via ctypes
+        import ctypes
+        ctypes.CDLL("nvcuda.dll")
+        return True
+    except (OSError, FileNotFoundError):
+        return False
+
+HAS_GPU = _detect_gpu()
+
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -33,11 +51,12 @@ from models import (
 
 
 def _get_ocr_reader():
-    """Lazy initialize EasyOCR reader (it's slow to load)."""
+    """Lazy initialize EasyOCR reader (it's slow to load). Uses GPU if available."""
     global _ocr_reader
     if _ocr_reader is None and HAS_EASYOCR:
-        print("🔄 Initializing EasyOCR (first time may take a while)...")
-        _ocr_reader = easyocr.Reader(['en'], gpu=True)
+        gpu_status = "GPU" if HAS_GPU else "CPU"
+        print(f"🔄 Initializing EasyOCR ({gpu_status}, first time may take a while)...")
+        _ocr_reader = easyocr.Reader(['en'], gpu=HAS_GPU)
     return _ocr_reader
 
 
@@ -263,6 +282,7 @@ class DocCaptureHandler:
         return {
             "pdf_extract": HAS_PYMUPDF,
             "ocr": HAS_EASYOCR,
+            "gpu_available": HAS_GPU,
             "supported_extensions": DocCaptureHandler.SUPPORTED_PDF_EXTENSIONS + DocCaptureHandler.SUPPORTED_IMAGE_EXTENSIONS
         }
 
