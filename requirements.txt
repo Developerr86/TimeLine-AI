@@ -1,17 +1,32 @@
-# Core dependencies for analyse-screen.py
-ollama>=0.3.0
-google-generativeai>=0.3.0
+# Core dependencies for TimeLine-AI Backend
+Flask>=3.0.0
+flask-cors>=4.0.0
 python-dotenv>=1.0.0
 
-# Flask web application dependencies
-Flask>=3.0.0
+# Database
+SQLAlchemy>=2.0.0
 
 # Image processing and screenshot capture
 Pillow>=10.0.0
 opencv-python>=4.8.0
 scikit-image>=0.22.0
-
-# Additional utilities
 numpy>=1.24.0
+
+# HTTP requests
 requests>=2.31.0
-flask-cors>=4.0.0
+
+# Web scraping
+trafilatura>=1.6.0
+beautifulsoup4>=4.12.0
+
+# PDF and OCR (Document capture)
+PyMuPDF>=1.23.0
+easyocr>=1.7.0
+
+# Windows-specific: Audio recording and media controls
+soundcard>=0.4.0
+winsdk
+
+# Optional: VLM providers (for legacy compatibility)
+ollama>=0.3.0
+google-generativeai>=0.3.0

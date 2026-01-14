@@ -1,37 +1,580 @@
+"""
+TimeLine Content Capture Pipeline - Flask API Server
+
+This is the main entry point for the Python backend.
+It provides REST API endpoints for the Electron frontend.
+"""
+
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
-import threading
-import time
-import json
 import os
+import uuid
 from pathlib import Path
 from datetime import datetime
-import base64
-from PIL import ImageGrab, Image
-import numpy as np
-from skimage.metrics import structural_similarity as ssim
-import cv2
-import requests
-import ollama
-import google.generativeai as genai
-from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
 
-load_dotenv()
+# Local modules
+from models import (
+    init_db, ensure_media_dirs, get_db, 
+    CaptureSession, CapturedText, CapturedMedia,
+    SessionType, MediaType, MEDIA_BASE_DIR,
+    MEDIA_WEB_DIR, MEDIA_DOCS_DIR, MEDIA_VIDEO_DIR
+)
+from state_manager import get_state_manager, AppState, ScenarioType
+from orchestrator import get_orchestrator, configure_orchestrator
+from scenarios.web_capture import WebCaptureHandler
+from scenarios.doc_capture import DocCaptureHandler
+from scenarios.video_capture import VideoCaptureHandler
+from media_listener import get_media_listener, MediaListener
 
+# Initialize Flask app
 app = Flask(__name__)
-CORS(app)  # Enable CORS for Electron frontend
+CORS(app)
 
+# Configuration
 SCREENSHOTS_DIR = Path("screenshots")
 SCREENSHOTS_DIR.mkdir(exist_ok=True)
-CONFIG_FILE = "config.json"
-RESPONSES_FILE = "responses.json"
+UPLOAD_FOLDER = Path("uploads")
+UPLOAD_FOLDER.mkdir(exist_ok=True)
+
+# Allowed file extensions for document upload
+ALLOWED_DOC_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp', '.webp'}
+
+
+def allowed_file(filename: str) -> bool:
+    """Check if file extension is allowed."""
+    return Path(filename).suffix.lower() in ALLOWED_DOC_EXTENSIONS
+
+
+# ============================================================================
+# Status & State Endpoints
+# ============================================================================
+
+@app.route('/api/status', methods=['GET'])
+def get_status():
+    """
+    Get full application status including orchestrator and state manager status.
+    The frontend should poll this endpoint to detect pending scenarios.
+    """
+    state_mgr = get_state_manager()
+    orch = get_orchestrator()
+    
+    # Get session counts from database
+    db = get_db()
+    try:
+        session_count = db.query(CaptureSession).count()
+        text_count = db.query(CapturedText).count()
+        media_count = db.query(CapturedMedia).count()
+    finally:
+        db.close()
+    
+    return jsonify({
+        "state": state_mgr.get_status(),
+        "orchestrator": orch.get_status(),
+        "database": {
+            "sessions": session_count,
+            "texts": text_count,
+            "media": media_count
+        }
+    })
+
+
+@app.route('/api/state', methods=['GET'])
+def get_state():
+    """Get just the state manager status (lightweight polling endpoint)."""
+    return jsonify(get_state_manager().get_status())
+
+
+# ============================================================================
+# Monitoring Control Endpoints
+# ============================================================================
+
+@app.route('/api/start', methods=['POST'])
+def start_monitoring():
+    """Start the monitoring loop."""
+    try:
+        data = request.get_json(silent=True) or {}
+        
+        # Optional configuration
+        interval = data.get('interval', 20)
+        confidence = data.get('confidence_threshold', 0.7)
+        vlm_url = data.get('vlm_url')
+        
+        orch = configure_orchestrator(
+            monitoring_interval=interval,
+            confidence_threshold=confidence,
+            vlm_url=vlm_url
+        ) if any([interval != 20, confidence != 0.7, vlm_url]) else get_orchestrator()
+        
+        if orch.start():
+            return jsonify({'status': 'started', 'config': orch.get_status()})
+        else:
+            # Already running is not an error - return success with current status
+            return jsonify({'status': 'already_running', 'config': orch.get_status()})
+    except Exception as e:
+        import traceback
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"❌ Error in /api/start: {error_msg}")
+        return jsonify({'status': 'error', 'message': str(e), 'details': error_msg}), 500
+
+
+@app.route('/api/stop', methods=['POST'])
+def stop_monitoring():
+    """Stop the monitoring loop."""
+    orch = get_orchestrator()
+    
+    if orch.stop():
+        return jsonify({'status': 'stopped'})
+    else:
+        return jsonify({'status': 'not_running'}), 400
+
+
+@app.route('/api/analyze', methods=['POST'])
+def force_analyze():
+    """Force an immediate screenshot and VLM analysis."""
+    orch = get_orchestrator()
+    result = orch.force_analyze()
+    
+    if result:
+        return jsonify({'status': 'success', 'analysis': result})
+    else:
+        return jsonify({'status': 'error', 'message': 'Analysis failed'}), 500
+
+
+# ============================================================================
+# Scenario Management Endpoints
+# ============================================================================
+
+@app.route('/api/scenario/confirm', methods=['POST'])
+def confirm_scenario():
+    """
+    Confirm the pending scenario and start capture.
+    The frontend calls this when user confirms the detected scenario.
+    """
+    state_mgr = get_state_manager()
+    
+    if not state_mgr.is_awaiting_input:
+        return jsonify({
+            'status': 'error', 
+            'message': 'No pending scenario to confirm'
+        }), 400
+    
+    pending = state_mgr.pending_scenario
+    if not pending:
+        return jsonify({'status': 'error', 'message': 'No pending scenario'}), 400
+    
+    # Create database session
+    db = get_db()
+    try:
+        session_type = SessionType(pending.scenario_type.value)
+        session = CaptureSession(
+            id=str(uuid.uuid4()),
+            type=session_type
+        )
+        db.add(session)
+        db.commit()
+        session_id = session.id
+    except Exception as e:
+        db.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        db.close()
+    
+    # Confirm in state manager
+    confirmed = state_mgr.confirm_scenario(session_id)
+    
+    return jsonify({
+        'status': 'confirmed',
+        'session_id': session_id,
+        'scenario_type': pending.scenario_type.value
+    })
+
+
+@app.route('/api/scenario/dismiss', methods=['POST'])
+def dismiss_scenario():
+    """Dismiss the pending scenario and return to monitoring."""
+    state_mgr = get_state_manager()
+    state_mgr.dismiss_scenario()
+    
+    return jsonify({'status': 'dismissed'})
+
+
+# ============================================================================
+# Web Capture Endpoints
+# ============================================================================
+
+@app.route('/api/capture/web', methods=['POST'])
+def capture_web():
+    """
+    Capture content from a web URL.
+    Request body: { "url": "https://example.com/article" }
+    """
+    data = request.get_json()
+    if not data or not data.get('url'):
+        return jsonify({'status': 'error', 'message': 'URL required'}), 400
+    
+    url = data['url']
+    state_mgr = get_state_manager()
+    
+    # Create database session
+    db = get_db()
+    try:
+        session = CaptureSession(
+            id=str(uuid.uuid4()),
+            type=SessionType.WEB,
+            source_url=url
+        )
+        db.add(session)
+        db.commit()
+        session_id = session.id
+    except Exception as e:
+        db.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        db.close()
+    
+    # Start capture
+    state_mgr.start_capture(session_id, ScenarioType.WEB, {'url': url})
+    
+    try:
+        handler = WebCaptureHandler()
+        result = handler.capture(url, session_id)
+        
+        # Update session end time
+        db = get_db()
+        try:
+            session = db.query(CaptureSession).filter_by(id=session_id).first()
+            if session:
+                session.end_time = datetime.utcnow()
+                db.commit()
+        finally:
+            db.close()
+        
+        return jsonify(result)
+        
+    finally:
+        # Always return to monitoring state
+        state_mgr.end_capture()
+
+
+# ============================================================================
+# Document Capture Endpoints
+# ============================================================================
+
+@app.route('/api/capture/doc', methods=['POST'])
+def capture_doc():
+    """
+    Capture content from an uploaded document.
+    Expects multipart/form-data with 'file' field.
+    """
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file provided'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No file selected'}), 400
+    
+    if not allowed_file(file.filename):
+        return jsonify({
+            'status': 'error', 
+            'message': f'Unsupported file type. Allowed: {", ".join(ALLOWED_DOC_EXTENSIONS)}'
+        }), 400
+    
+    # Save uploaded file temporarily
+    filename = secure_filename(file.filename)
+    temp_path = UPLOAD_FOLDER / filename
+    file.save(temp_path)
+    
+    state_mgr = get_state_manager()
+    
+    # Create database session
+    db = get_db()
+    try:
+        session = CaptureSession(
+            id=str(uuid.uuid4()),
+            type=SessionType.DOC,
+            source_path=str(temp_path)
+        )
+        db.add(session)
+        db.commit()
+        session_id = session.id
+    except Exception as e:
+        db.rollback()
+        temp_path.unlink(missing_ok=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        db.close()
+    
+    # Start capture
+    state_mgr.start_capture(session_id, ScenarioType.DOC, {'filename': filename})
+    
+    try:
+        handler = DocCaptureHandler()
+        result = handler.capture(str(temp_path), session_id, filename)
+        
+        # Update session end time
+        db = get_db()
+        try:
+            session = db.query(CaptureSession).filter_by(id=session_id).first()
+            if session:
+                session.end_time = datetime.utcnow()
+                db.commit()
+        finally:
+            db.close()
+        
+        # Clean up temp file (original is copied to media dir)
+        temp_path.unlink(missing_ok=True)
+        
+        return jsonify(result)
+        
+    finally:
+        state_mgr.end_capture()
+
+
+@app.route('/api/capture/doc/capabilities', methods=['GET'])
+def doc_capabilities():
+    """Get document capture capabilities (what's installed)."""
+    return jsonify(DocCaptureHandler.get_capabilities())
+
+
+# ============================================================================
+# Video Capture Endpoints
+# ============================================================================
+
+# Global video capture handler (needs to persist between start/stop calls)
+_video_handler: VideoCaptureHandler = None
+
+
+def get_video_handler() -> VideoCaptureHandler:
+    global _video_handler
+    if _video_handler is None:
+        media_listener = get_media_listener()
+        _video_handler = VideoCaptureHandler(media_listener=media_listener)
+    return _video_handler
+
+
+@app.route('/api/capture/video/start', methods=['POST'])
+def start_video_capture():
+    """Start video/lecture capture (screenshots + audio recording)."""
+    state_mgr = get_state_manager()
+    
+    if state_mgr.is_capturing:
+        return jsonify({
+            'status': 'error',
+            'message': f'Already capturing: {state_mgr.current_state.value}'
+        }), 400
+    
+    # Create database session
+    db = get_db()
+    try:
+        session = CaptureSession(
+            id=str(uuid.uuid4()),
+            type=SessionType.VIDEO
+        )
+        db.add(session)
+        db.commit()
+        session_id = session.id
+    except Exception as e:
+        db.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        db.close()
+    
+    # Start capture
+    state_mgr.start_capture(session_id, ScenarioType.VIDEO)
+    
+    handler = get_video_handler()
+    result = handler.start(session_id)
+    
+    if not result.get('success'):
+        state_mgr.end_capture()
+        return jsonify(result), 500
+    
+    return jsonify(result)
+
+
+@app.route('/api/capture/video/stop', methods=['POST'])
+def stop_video_capture():
+    """Stop video/lecture capture."""
+    state_mgr = get_state_manager()
+    
+    if state_mgr.current_state != AppState.CAPTURING_VIDEO:
+        return jsonify({
+            'status': 'error',
+            'message': 'Not currently recording video'
+        }), 400
+    
+    handler = get_video_handler()
+    result = handler.stop()
+    
+    # Update session end time
+    if result.get('session_id'):
+        db = get_db()
+        try:
+            session = db.query(CaptureSession).filter_by(id=result['session_id']).first()
+            if session:
+                session.end_time = datetime.utcnow()
+                db.commit()
+        finally:
+            db.close()
+    
+    state_mgr.end_capture()
+    
+    return jsonify(result)
+
+
+@app.route('/api/capture/video/status', methods=['GET'])
+def video_capture_status():
+    """Get current video capture status."""
+    handler = get_video_handler()
+    media_listener = get_media_listener()
+    
+    return jsonify({
+        'capture': handler.get_status(),
+        'media': media_listener.get_media_info(),
+        'recording': media_listener.get_recording_status(),
+        'capabilities': MediaListener.get_capabilities()
+    })
+
+
+# ============================================================================
+# Session & Data Endpoints
+# ============================================================================
+
+@app.route('/api/sessions', methods=['GET'])
+def list_sessions():
+    """List all capture sessions."""
+    db = get_db()
+    try:
+        sessions = db.query(CaptureSession).order_by(
+            CaptureSession.start_time.desc()
+        ).limit(100).all()
+        
+        return jsonify([s.to_dict() for s in sessions])
+    finally:
+        db.close()
+
+
+@app.route('/api/sessions/<session_id>', methods=['GET'])
+def get_session(session_id: str):
+    """Get details for a specific session including captured content."""
+    db = get_db()
+    try:
+        session = db.query(CaptureSession).filter_by(id=session_id).first()
+        if not session:
+            return jsonify({'status': 'error', 'message': 'Session not found'}), 404
+        
+        texts = db.query(CapturedText).filter_by(session_id=session_id).all()
+        media = db.query(CapturedMedia).filter_by(session_id=session_id).all()
+        
+        return jsonify({
+            'session': session.to_dict(),
+            'texts': [t.to_dict() for t in texts],
+            'media': [m.to_dict() for m in media]
+        })
+    finally:
+        db.close()
+
+
+@app.route('/api/responses', methods=['GET'])
+def api_responses():
+    """
+    Legacy endpoint for backward compatibility with old frontend.
+    Returns sessions in the old responses.json format.
+    """
+    db = get_db()
+    try:
+        sessions = db.query(CaptureSession).order_by(
+            CaptureSession.start_time.desc()
+        ).limit(100).all()
+        
+        # Convert to old format
+        responses = []
+        for session in sessions:
+            # Get first text content if available
+            text = db.query(CapturedText).filter_by(session_id=session.id).first()
+            
+            # Get first media/screenshot if available
+            media = db.query(CapturedMedia).filter_by(
+                session_id=session.id,
+                media_type=MediaType.IMAGE
+            ).first()
+            
+            response = {
+                'timestamp': session.start_time.isoformat() if session.start_time else None,
+                'title': session.title or 'Captured Content',
+                'summary': text.content[:200] + '...' if text and len(text.content) > 200 else (text.content if text else 'No content'),
+                'model': 'database',
+                'model_name': f'{session.type.value} capture',
+                'image_path': media.file_path if media else None,
+                'session_id': session.id
+            }
+            responses.append(response)
+        
+        return jsonify(responses)
+    finally:
+        db.close()
+
+
+@app.route('/api/sessions/<session_id>', methods=['DELETE'])
+def delete_session(session_id: str):
+    """Delete a capture session and all associated data."""
+    db = get_db()
+    try:
+        session = db.query(CaptureSession).filter_by(id=session_id).first()
+        if not session:
+            return jsonify({'status': 'error', 'message': 'Session not found'}), 404
+        
+        # Delete associated media files
+        media_items = db.query(CapturedMedia).filter_by(session_id=session_id).all()
+        for item in media_items:
+            try:
+                Path(item.file_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+        
+        # Delete session (cascades to texts and media records)
+        db.delete(session)
+        db.commit()
+        
+        return jsonify({'status': 'deleted', 'session_id': session_id})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        db.close()
+
+
+# ============================================================================
+# Media Serving Endpoints
+# ============================================================================
+
+@app.route('/media/<path:filepath>')
+def serve_media(filepath):
+    """Serve media files (images, audio, etc.)."""
+    return send_from_directory(MEDIA_BASE_DIR, filepath)
+
+
+@app.route('/screenshots/<path:filename>')
+def serve_screenshot(filename):
+    """Serve screenshot files."""
+    return send_from_directory(SCREENSHOTS_DIR, filename)
+
+
+# ============================================================================
+# Legacy Endpoints (Backward Compatibility)
+# ============================================================================
+
+# Legacy config file path
+import json
+CONFIG_FILE = Path(__file__).parent / "config.json"
 
 DEFAULT_CONFIG = {
-    "interval": 5,
-    "model_type": "ollama",
-    "ollama_model": os.getenv('OLLAMA_MODEL', 'qwen2.5vl:3b'),
-    "gemini_model": os.getenv('GEMINI_MODEL', 'gemini-2.5-pro'),
-    "Apple_FastVLM": os.getenv('REMOTE_URL', 'http://localhost:5001/predict'),
+    "interval": 20,
+    "model_type": "remote",
+    "ollama_model": "qwen2.5vl:3b",
+    "gemini_model": "gemini-2.5-pro",
+    "remote_url": "http://localhost:5001/predict",
     "similarity_threshold": 0.95,
     "notes_history_limit": 5,
     "notes_model_provider": "gemini",
@@ -39,12 +582,10 @@ DEFAULT_CONFIG = {
     "enabled": False
 }
 
-capture_thread = None
-stop_capture = threading.Event()
-latest_activity = {"timestamp": None, "title": None, "screenshot_taken": False}
 
 def load_config():
-    if os.path.exists(CONFIG_FILE):
+    """Load config from file or return defaults."""
+    if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, 'r') as f:
                 config = json.load(f)
@@ -52,346 +593,26 @@ def load_config():
                     if key not in config:
                         config[key] = value
                 return config
-        except:
+        except Exception:
             return DEFAULT_CONFIG.copy()
     return DEFAULT_CONFIG.copy()
 
+
 def save_config(config):
+    """Save config to file."""
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=2)
 
-def load_responses():
-    if os.path.exists(RESPONSES_FILE):
-        try:
-            with open(RESPONSES_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            return []
-    return []
-
-def save_response(response_data):
-    responses = load_responses()
-    responses.append(response_data)
-    with open(RESPONSES_FILE, 'w', encoding='utf-8') as f:
-        json.dump(responses, f, indent=2, ensure_ascii=False)
-
-def calculate_ssim(image1_path, image2_path):
-    img1 = cv2.imread(str(image1_path))
-    img2 = cv2.imread(str(image2_path))
-    
-    if img1 is None or img2 is None:
-        return 0.0
-    
-    if img1.shape != img2.shape:
-        img2 = cv2.resize(img2, (img1.shape[1], img1.shape[0]))
-    
-    img1_gray = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
-    img2_gray = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
-    
-    score, _ = ssim(img1_gray, img2_gray, full=True)
-    return score
-
-def get_last_screenshot():
-    screenshots = sorted(SCREENSHOTS_DIR.glob("*.png"))
-    return screenshots[-1] if screenshots else None
-
-def take_screenshot():
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    filename = SCREENSHOTS_DIR / f"screenshot_{timestamp}.png"
-    
-    screenshot = ImageGrab.grab()
-    screenshot.save(filename)
-    
-    return filename
-
-def analyze_screenshot_ollama(image_path, model_name):
-    try:
-        with open(image_path, "rb") as image_file:
-            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-        
-        prompt = """
-        You are an AI assistant analyzing a user's computer activity from a screenshot.
-        Your task is to describe what is happening on the screen and then create a summary of the activity.
-
-        1.  **Analyze the Screen:** Look closely at the applications, websites, and any visible text on the screen.
-            Be specific and factual. For example, instead of "coding", say "writing a Python function in VS Code".
-
-        2.  **Generate a JSON Summary:** Based on your analysis, create a title and a brief summary for this activity.
-            The title should be conversational and 5-8 words long.
-            The summary should be 1-2 sentences describing the main task.
-
-        Respond with ONLY a valid JSON object in the following format:
-        {
-          "title": "A short, conversational title of the activity",
-          "summary": "A 1-2 sentence summary of what the user is doing."
-        }
-        """
-        
-        client = ollama.Client()
-        response = client.chat(
-            model=model_name,
-            messages=[{
-                'role': 'user',
-                'content': prompt,
-                'images': [base64_image]
-            }],
-            options={'verbose': True}
-        )
-        
-        token_info = {
-            'prompt_tokens': response.get('prompt_eval_count', 0),
-            'completion_tokens': response.get('eval_count', 0),
-            'total_tokens': response.get('prompt_eval_count', 0) + response.get('eval_count', 0)
-        }
-        
-        response_content = response['message']['content']
-        
-        if response_content.strip().startswith("```json"):
-            json_str = response_content.strip()[7:-3].strip()
-        else:
-            json_str = response_content
-        
-        summary_data = json.loads(json_str)
-        return {
-            'title': summary_data.get('title', 'No Title'),
-            'summary': summary_data.get('summary', 'No Summary'),
-            'raw_response': response_content,
-            'token_usage': token_info
-        }
-    except Exception as e:
-        return {
-            'title': 'Error',
-            'summary': f'Analysis failed: {str(e)}',
-            'error': str(e)
-        }
-
-def analyze_screenshot_gemini(image_path, model_name):
-    try:
-        api_key = os.getenv('GEMINI_API_KEY')
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY not set")
-        
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name)
-        
-        with open(image_path, 'rb') as image_file:
-            image_data = image_file.read()
-        
-        prompt = """
-        You are an AI assistant analyzing a user's computer activity from a screenshot.
-        Your task is to describe what is happening on the screen and then create a summary of the activity.
-
-        1.  **Analyze the Screen:** Look closely at the applications, websites, and any visible text on the screen.
-            Be specific and factual. For example, instead of "coding", say "writing a Python function in VS Code".
-
-        2.  **Generate a JSON Summary:** Based on your analysis, create a title and a brief summary for this activity.
-            The title should be conversational and 5-8 words long.
-            The summary should be 1-2 sentences describing the main task.
-
-        Respond with ONLY a valid JSON object in the following format:
-        {
-          "title": "A short, conversational title of the activity",
-          "summary": "A 1-2 sentence summary of what the user is doing."
-        }
-        """
-        
-        response = model.generate_content([
-            prompt,
-            {"mime_type": "image/png", "data": image_data}
-        ])
-        
-        token_info = {}
-        if hasattr(response, 'usage_metadata') and response.usage_metadata:
-            usage = response.usage_metadata
-            token_info = {
-                'prompt_tokens': getattr(usage, 'prompt_token_count', 0),
-                'completion_tokens': getattr(usage, 'candidates_token_count', 0),
-                'total_tokens': getattr(usage, 'total_token_count', 0)
-            }
-        
-        response_content = response.text
-        
-        if response_content.strip().startswith("```json"):
-            json_str = response_content.strip()[7:-3].strip()
-        elif response_content.strip().startswith("```"):
-            lines = response_content.strip().split('\n')
-            json_str = '\n'.join(lines[1:-1]).strip()
-        else:
-            json_str = response_content
-        
-        summary_data = json.loads(json_str)
-        return {
-            'title': summary_data.get('title', 'No Title'),
-            'summary': summary_data.get('summary', 'No Summary'),
-            'raw_response': response_content,
-            'token_usage': token_info
-        }
-    except Exception as e:
-        return {
-            'title': 'Error',
-            'summary': f'Analysis failed: {str(e)}',
-            'error': str(e)
-        }
-
-def analyze_screenshot_remote(image_path, url):
-    try:
-        prompt = """
-        You are an AI assistant analyzing a user's computer activity from a screenshot.
-        Your task is to describe what is happening on the screen and then create a summary of the activity.
-
-        1.  **Analyze the Screen:** Look closely at the applications, websites, and any visible text on the screen.
-            Be specific and factual. For example, instead of "coding", say "writing a Python function in VS Code".
-
-        2.  **Generate a JSON Summary:** Based on your analysis, create a title and a brief summary for this activity.
-            The title should be conversational and 5-8 words long.
-            The summary should be 1-2 sentences describing the main task.
-
-        Respond with ONLY a valid JSON object in the following format:
-        {
-          "title": "A short, conversational title of the activity",
-          "summary": "A 1-2 sentence summary of what the user is doing."
-        }
-        """
-
-        with open(image_path, 'rb') as img_file:
-            files = {'image': img_file}
-            data = {'prompt': prompt}
-            
-            response = requests.post(url, files=files, data=data)
-            
-            if response.status_code == 200:
-                # Assuming the remote server follows the structure implied by test_client.py
-                # which expects response.json().get('response')
-                response_json = response.json()
-                response_content = response_json.get('response')
-                
-                if not response_content:
-                    # Fallback if the key 'response' is missing, maybe the whole body is the content
-                    if isinstance(response_json, dict) and 'title' in response_json:
-                         # It returned the JSON object directly
-                         return {
-                            'title': response_json.get('title', 'No Title'),
-                            'summary': response_json.get('summary', 'No Summary'),
-                            'raw_response': json.dumps(response_json),
-                            'token_usage': {}
-                        }
-                    response_content = str(response_json)
-                
-                # Parse the content which is expected to be the JSON string
-                if response_content.strip().startswith("```json"):
-                    json_str = response_content.strip()[7:-3].strip()
-                elif response_content.strip().startswith("```"):
-                    lines = response_content.strip().split('\n')
-                    json_str = '\n'.join(lines[1:-1]).strip()
-                else:
-                    json_str = response_content
-                
-                try:
-                    summary_data = json.loads(json_str)
-                    return {
-                        'title': summary_data.get('title', 'No Title'),
-                        'summary': summary_data.get('summary', 'No Summary'),
-                        'raw_response': response_content,
-                        'token_usage': {}
-                    }
-                except json.JSONDecodeError:
-                    # If it's not JSON, treat the whole text as summary
-                    return {
-                        'title': 'Remote Analysis',
-                        'summary': response_content[:500],
-                        'raw_response': response_content,
-                        'token_usage': {}
-                    }
-            else:
-                return {
-                    'title': 'Error',
-                    'summary': f'Remote server error: {response.status_code}',
-                    'error': response.text
-                }
-    except Exception as e:
-        return {
-            'title': 'Error',
-            'summary': f'Analysis failed: {str(e)}',
-            'error': str(e)
-        }
-
-def capture_loop():
-    global stop_capture, latest_activity
-    config = load_config()
-    
-    print("⏳ Waiting 10 seconds before starting capture...")
-    time.sleep(10)
-    print("✅ Starting screenshot capture now!")
-    
-    while not stop_capture.is_set():
-        try:
-            screenshot_path = take_screenshot()
-            print(f"📸 Screenshot taken: {screenshot_path.name}")
-            
-            latest_activity["screenshot_taken"] = True
-            latest_activity["timestamp"] = datetime.now().isoformat()
-            
-            last_screenshot = get_last_screenshot()
-            should_analyze = True
-            
-            if last_screenshot and last_screenshot != screenshot_path:
-                similarity = calculate_ssim(last_screenshot, screenshot_path)
-                print(f"📊 Similarity: {similarity:.2%}")
-                
-                if similarity >= config['similarity_threshold']:
-                    print(f"❌ Removing similar screenshot: {screenshot_path.name}")
-                    screenshot_path.unlink()
-                    should_analyze = False
-            
-            if should_analyze:
-                print(f"🧠 Analyzing screenshot...")
-                
-                if config['model_type'] == 'ollama':
-                    result = analyze_screenshot_ollama(screenshot_path, config['ollama_model'])
-                    model_name = config['ollama_model']
-                elif config['model_type'] == 'remote':
-                    result = analyze_screenshot_remote(screenshot_path, config['remote_url'])
-                    model_name = config['remote_url']
-                else:
-                    result = analyze_screenshot_gemini(screenshot_path, config['gemini_model'])
-                    model_name = config['gemini_model']
-                
-                response_entry = {
-                    "timestamp": datetime.now().isoformat(),
-                    "model": config['model_type'],
-                    "model_name": model_name,
-                    "image_path": str(screenshot_path),
-                    "title": result.get('title', 'No Title'),
-                    "summary": result.get('summary', 'No Summary'),
-                    "raw_response": result.get('raw_response', ''),
-                    "token_usage": result.get('token_usage', {})
-                }
-                
-                if 'error' in result:
-                    response_entry['error'] = result['error']
-                
-                save_response(response_entry)
-                print(f"✅ Analysis complete: {result['title']}")
-                
-                latest_activity["title"] = result['title']
-                latest_activity["new_analysis"] = True
-            
-            time.sleep(config['interval'])
-        except Exception as e:
-            print(f"❌ Error in capture loop: {e}")
-            time.sleep(5)
-
-# Note: Template routes removed - UI is now handled by React
-# The following API routes remain for the Electron app:
 
 @app.route('/api/config', methods=['GET', 'POST'])
 def api_config():
+    """Legacy config endpoint for old frontend."""
     if request.method == 'POST':
         data = request.json
         config = load_config()
         
-        config['interval'] = int(data.get('interval', 5))
-        config['model_type'] = data.get('model_type', 'ollama')
+        config['interval'] = int(data.get('interval', 20))
+        config['model_type'] = data.get('model_type', 'remote')
         config['ollama_model'] = data.get('ollama_model', config['ollama_model'])
         config['gemini_model'] = data.get('gemini_model', config['gemini_model'])
         config['remote_url'] = data.get('remote_url', config.get('remote_url', 'http://localhost:5001/predict'))
@@ -405,147 +626,12 @@ def api_config():
     else:
         return jsonify(load_config())
 
-@app.route('/api/start', methods=['POST'])
-def start_capture():
-    global capture_thread, stop_capture
-    
-    config = load_config()
-    if config.get('enabled', False):
-        return jsonify({'status': 'already_running'})
-    
-    config['enabled'] = True
-    save_config(config)
-    
-    stop_capture.clear()
-    capture_thread = threading.Thread(target=capture_loop, daemon=True)
-    capture_thread.start()
-    
-    return jsonify({'status': 'started'})
-
-@app.route('/api/stop', methods=['POST'])
-def stop_capture_route():
-    global stop_capture
-    
-    config = load_config()
-    config['enabled'] = False
-    save_config(config)
-    
-    stop_capture.set()
-    
-    return jsonify({'status': 'stopped'})
-
-@app.route('/api/status')
-def status():
-    config = load_config()
-    responses = load_responses()
-    return jsonify({
-        'enabled': config.get('enabled', False),
-        'total_responses': len(responses),
-        'config': config
-    })
-
-@app.route('/api/responses')
-def api_responses():
-    responses = load_responses()
-    responses.reverse()
-    return jsonify(responses)
-
-@app.route('/api/latest_activity')
-def api_latest_activity():
-    global latest_activity
-    activity = latest_activity.copy()
-    if activity.get("screenshot_taken"):
-        latest_activity["screenshot_taken"] = False
-    if activity.get("new_analysis"):
-        latest_activity["new_analysis"] = False
-    return jsonify(activity)
-
-@app.route('/screenshots/<path:filename>')
-def serve_screenshot(filename):
-    return send_from_directory(SCREENSHOTS_DIR, filename)
-
-@app.route('/api/generate_notes', methods=['POST'])
-def generate_notes():
-    try:
-        config = load_config()
-        responses = load_responses()
-        
-        # Get the limit from config, default to 5 if not set
-        limit = config.get('notes_history_limit', 5)
-        
-        # Get the last N responses
-        recent_responses = responses[-limit:] if responses else []
-        
-        if not recent_responses:
-            return jsonify({
-                'status': 'error', 
-                'message': 'No recent activities to generate notes from.'
-            }), 400
-            
-        # Prepare the prompt
-        activities_text = ""
-        for i, resp in enumerate(recent_responses):
-            timestamp = resp.get('timestamp', 'Unknown time')
-            title = resp.get('title', 'No Title')
-            summary = resp.get('summary', 'No Summary')
-            activities_text += f"{i+1}. [{timestamp}] {title}: {summary}\n"
-            
-        prompt = f"""
-        You are an intelligent assistant helping a user review their recent computer activity.
-        Here are the user's last {len(recent_responses)} recorded activities:
-        
-        {activities_text}
-        
-        Based on these activities, please generate a concise set of notes.
-        - Summarize the main themes or tasks the user was working on.
-        - Highlight any potential distractions if apparent.
-        - Estimate roughly how much time was spent on different contexts (coding, browsing, etc.) if possible.
-        - Keep the tone professional and helpful.
-        - Format the output with Markdown (bullet points, bold text, etc.).
-        """
-        
-        provider = config.get('notes_model_provider', 'gemini')
-        
-        if provider == 'ollama':
-             # Use Ollama
-            model_name = config.get('notes_ollama_model', 'llama3')
-            client = ollama.Client()
-            response = client.chat(
-                model=model_name,
-                messages=[{
-                    'role': 'user',
-                    'content': prompt
-                }]
-            )
-            response_text = response['message']['content']
-        else:
-            # Use Gemini (Default)
-            # Check for Gemini API key
-            api_key = os.getenv('GEMINI_API_KEY')
-            if not api_key:
-                return jsonify({
-                    'status': 'error',
-                    'message': 'GEMINI_API_KEY not set. Please configure it in .env file.'
-                }), 400
-            
-            # Configure Gemini
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(config.get('gemini_model', 'gemini-2.5-pro'))
-            response = model.generate_content(prompt)
-            response_text = response.text
-        
-        return jsonify({
-            'status': 'success',
-            'notes': response_text,
-            'activity_count': len(recent_responses)
-        })
-        
-    except Exception as e:
-        print(f"❌ Error generating notes: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
 @app.route('/api/upload_image', methods=['POST'])
 def upload_image():
+    """
+    Legacy endpoint for image upload from old frontend.
+    Redirects to the new document capture flow.
+    """
     if 'image' not in request.files:
         return jsonify({'status': 'error', 'message': 'No image file provided'}), 400
     
@@ -553,144 +639,94 @@ def upload_image():
     if file.filename == '':
         return jsonify({'status': 'error', 'message': 'No file selected'}), 400
     
+    # Save to screenshots directory (legacy behavior)
+    from werkzeug.utils import secure_filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    filename = f"uploaded_{timestamp}.png"
+    filepath = SCREENSHOTS_DIR / filename
+    
+    file.save(filepath)
+    print(f"📤 Image uploaded: {filename}")
+    
+    # Create a quick analysis session (simplified version)
+    db = get_db()
     try:
-        config = load_config()
+        session = CaptureSession(
+            id=str(uuid.uuid4()),
+            type=SessionType.DOC,
+            title=f"Uploaded: {file.filename}",
+            source_path=str(filepath)
+        )
+        db.add(session)
         
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        filename = f"uploaded_{timestamp}.png"
-        filepath = SCREENSHOTS_DIR / filename
+        # Save image reference
+        media = CapturedMedia(
+            session_id=session.id,
+            file_path=str(filepath),
+            media_type=MediaType.IMAGE
+        )
+        db.add(media)
         
-        file.save(filepath)
-        
-        print(f"📤 Uploaded image: {filename}")
-        print(f"🧠 Analyzing uploaded image...")
-        
-        if config['model_type'] == 'ollama':
-            result = analyze_screenshot_ollama(filepath, config['ollama_model'])
-            model_name = config['ollama_model']
-        elif config['model_type'] == 'remote':
-            result = analyze_screenshot_remote(filepath, config['remote_url'])
-            model_name = config['remote_url']
-        else:
-            result = analyze_screenshot_gemini(filepath, config['gemini_model'])
-            model_name = config['gemini_model']
-        
-        response_entry = {
-            "timestamp": datetime.now().isoformat(),
-            "model": config['model_type'],
-            "model_name": model_name,
-            "image_path": str(filepath),
-            "title": result.get('title', 'No Title'),
-            "summary": result.get('summary', 'No Summary'),
-            "raw_response": result.get('raw_response', ''),
-            "token_usage": result.get('token_usage', {}),
-            "uploaded": True
-        }
-        
-        if 'error' in result:
-            response_entry['error'] = result['error']
-        
-        save_response(response_entry)
-        print(f"✅ Upload analysis complete: {result['title']}")
+        db.commit()
+        session_id = session.id
         
         return jsonify({
             'status': 'success',
-            'title': result.get('title', 'No Title'),
-            'summary': result.get('summary', 'No Summary'),
-            'image_path': str(filepath)
+            'title': f'Uploaded: {file.filename}',
+            'summary': 'Image uploaded successfully. Analyze it using the new capture flow.',
+            'image_path': str(filepath),
+            'session_id': session_id
         })
+        
+    except Exception as e:
+        db.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        db.close()
+
+
+# ============================================================================
+# Utility Endpoints
+# ============================================================================
+
+@app.route('/api/reset', methods=['POST'])
+def reset_state():
+    """Reset the state manager (for debugging/recovery)."""
+    state_mgr = get_state_manager()
+    orch = get_orchestrator()
     
-    except Exception as e:
-        print(f"❌ Error processing upload: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    # Stop monitoring if running
+    orch.stop()
+    
+    # Reset state
+    state_mgr.reset()
+    
+    return jsonify({'status': 'reset'})
 
-@app.route('/api/delete_responses', methods=['POST'])
-def delete_responses():
-    try:
-        data = request.json
-        timestamps_to_delete = data.get('timestamps', [])
-        
-        if not timestamps_to_delete:
-            return jsonify({'status': 'error', 'message': 'No items selected'}), 400
-            
-        responses = load_responses()
-        new_responses = []
-        deleted_count = 0
-        
-        for resp in responses:
-            if resp['timestamp'] in timestamps_to_delete:
-                # Delete the image file
-                if 'image_path' in resp and resp['image_path']:
-                    try:
-                        # Handle both string path and Path object (though JSON usually has string)
-                        image_path = Path(resp['image_path'])
-                        if image_path.exists():
-                            image_path.unlink()
-                    except Exception as e:
-                        print(f"⚠️ Failed to delete image {resp['image_path']}: {e}")
-                deleted_count += 1
-            else:
-                new_responses.append(resp)
-        
-        # Save the filtered list
-        with open(RESPONSES_FILE, 'w', encoding='utf-8') as f:
-            json.dump(new_responses, f, indent=2, ensure_ascii=False)
-            
-        return jsonify({
-            'status': 'success', 
-            'deleted_count': deleted_count
-        })
-        
-    except Exception as e:
-        print(f"❌ Error deleting responses: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@app.route('/api/clear_context', methods=['POST'])
-def clear_context():
-    try:
-        # Stop capture if running
-        config = load_config()
-        was_running = config.get('enabled', False)
-        
-        if was_running:
-            stop_capture.set()
-            # Update config to disabled
-            config['enabled'] = False
-            save_config(config)
-            
-        # Clear responses.json
-        with open(RESPONSES_FILE, 'w', encoding='utf-8') as f:
-            json.dump([], f, indent=2)
-            
-        # Clear screenshots directory
-        if SCREENSHOTS_DIR.exists():
-            for file_path in SCREENSHOTS_DIR.glob('*'):
-                if file_path.is_file():
-                    try:
-                        file_path.unlink()
-                    except Exception as e:
-                        print(f"⚠️ Failed to delete {file_path}: {e}")
-                    
-        # Clear latest activity
-        global latest_activity
-        latest_activity = {"timestamp": None, "title": None, "screenshot_taken": False}
-        
-        return jsonify({
-            'status': 'success', 
-            'message': 'Context cleared successfully',
-            'was_running': was_running
-        })
-    except Exception as e:
-        print(f"❌ Error clearing context: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Simple health check endpoint."""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.utcnow().isoformat()
+    })
+
+
+# ============================================================================
+# Application Entry Point
+# ============================================================================
 
 if __name__ == '__main__':
-    config = load_config()
+    # Initialize database and directories
+    init_db()
+    ensure_media_dirs()
     
-    if config.get('enabled', False):
-        stop_capture.clear()
-        capture_thread = threading.Thread(target=capture_loop, daemon=True)
-        capture_thread.start()
-        print("🚀 Auto-capture started")
+    print("=" * 60)
+    print("TimeLine Content Capture Pipeline")
+    print("=" * 60)
+    print(f"API Server: http://localhost:5000")
+    print(f"VLM Expected: http://localhost:5001/predict")
+    print("=" * 60)
     
     app.run(debug=True, host='0.0.0.0', port=5000)
