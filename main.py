@@ -91,20 +91,21 @@ def get_state():
 
 @app.route('/api/start', methods=['POST'])
 def start_monitoring():
-    """Start the monitoring loop."""
+    """Start the orchestrator to receive browser extension heartbeats."""
     try:
         data = request.get_json(silent=True) or {}
         
         # Optional configuration
-        interval = data.get('interval', 20)
-        confidence = data.get('confidence_threshold', 0.7)
-        vlm_url = data.get('vlm_url')
+        auto_trigger_video = data.get('auto_trigger_video', False)
+        scenario_threshold = data.get('scenario_change_threshold', 2)
         
-        orch = configure_orchestrator(
-            monitoring_interval=interval,
-            confidence_threshold=confidence,
-            vlm_url=vlm_url
-        ) if any([interval != 20, confidence != 0.7, vlm_url]) else get_orchestrator()
+        if auto_trigger_video or scenario_threshold != 2:
+            orch = configure_orchestrator(
+                auto_trigger_video=auto_trigger_video,
+                scenario_change_threshold=scenario_threshold
+            )
+        else:
+            orch = get_orchestrator()
         
         if orch.start():
             return jsonify({'status': 'started', 'config': orch.get_status()})
@@ -120,7 +121,7 @@ def start_monitoring():
 
 @app.route('/api/stop', methods=['POST'])
 def stop_monitoring():
-    """Stop the monitoring loop."""
+    """Stop the orchestrator."""
     orch = get_orchestrator()
     
     if orch.stop():
@@ -129,16 +130,25 @@ def stop_monitoring():
         return jsonify({'status': 'not_running'}), 400
 
 
-@app.route('/api/analyze', methods=['POST'])
-def force_analyze():
-    """Force an immediate screenshot and VLM analysis."""
-    orch = get_orchestrator()
-    result = orch.force_analyze()
+@app.route('/api/heartbeat', methods=['POST'])
+def heartbeat():
+    """
+    Receive heartbeat from browser extension.
+    Request body: {
+        "url": "https://...",
+        "title": "Page Title",
+        "scenario": "VIDEO" | "DOC" | "WEB" | "OTHER",
+        "timestamp": 1234567890
+    }
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'status': 'error', 'message': 'No data provided'}), 400
     
-    if result:
-        return jsonify({'status': 'success', 'analysis': result})
-    else:
-        return jsonify({'status': 'error', 'message': 'Analysis failed'}), 500
+    orch = get_orchestrator()
+    result = orch.handle_heartbeat(data)
+    
+    return jsonify(result)
 
 
 # ============================================================================
@@ -756,6 +766,86 @@ def reset_state():
     state_mgr.reset()
     
     return jsonify({'status': 'reset'})
+
+
+@app.route('/api/clear_context', methods=['POST'])
+def clear_context():
+    """
+    Clear all captured data - sessions, texts, media, and screenshot files.
+    This is a destructive operation used by the Settings "Clear All Data" button.
+    """
+    import shutil
+    
+    state_mgr = get_state_manager()
+    orch = get_orchestrator()
+    
+    # Stop monitoring if running
+    orch.stop()
+    
+    # Reset state
+    state_mgr.reset()
+    
+    deleted_sessions = 0
+    deleted_files = 0
+    errors = []
+    
+    db = get_db()
+    try:
+        # Delete all media files first
+        media_items = db.query(CapturedMedia).all()
+        for item in media_items:
+            try:
+                path = Path(item.file_path)
+                if path.exists():
+                    path.unlink()
+                    deleted_files += 1
+            except Exception as e:
+                errors.append(f"Failed to delete {item.file_path}: {str(e)}")
+        
+        # Delete all sessions (cascades to texts and media records)
+        deleted_sessions = db.query(CaptureSession).delete()
+        db.commit()
+        
+    except Exception as e:
+        db.rollback()
+        return jsonify({
+            'status': 'error',
+            'message': f'Database error: {str(e)}'
+        }), 500
+    finally:
+        db.close()
+    
+    # Clear screenshot directory
+    try:
+        if SCREENSHOTS_DIR.exists():
+            for file in SCREENSHOTS_DIR.iterdir():
+                if file.is_file():
+                    file.unlink()
+                    deleted_files += 1
+    except Exception as e:
+        errors.append(f"Failed to clear screenshots: {str(e)}")
+    
+    # Clear media directories
+    for media_dir in [MEDIA_WEB_DIR, MEDIA_DOCS_DIR, MEDIA_VIDEO_DIR]:
+        try:
+            if media_dir.exists():
+                for item in media_dir.iterdir():
+                    if item.is_dir():
+                        shutil.rmtree(item)
+                        deleted_files += 1
+                    else:
+                        item.unlink()
+                        deleted_files += 1
+        except Exception as e:
+            errors.append(f"Failed to clear {media_dir}: {str(e)}")
+    
+    return jsonify({
+        'status': 'success',
+        'message': f'Cleared {deleted_sessions} sessions and {deleted_files} files',
+        'deleted_sessions': deleted_sessions,
+        'deleted_files': deleted_files,
+        'errors': errors if errors else None
+    })
 
 
 @app.route('/api/health', methods=['GET'])

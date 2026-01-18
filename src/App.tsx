@@ -5,6 +5,7 @@ import TimelineView from './components/TimelineView';
 import SettingsView from './components/SettingsView';
 import ControlPanel from './components/ControlPanel';
 import Notification from './components/Notification';
+import ScenarioDialog from './components/ScenarioDialog';
 import { api, StatusResponse } from './services/api';
 
 export interface NotificationState {
@@ -46,23 +47,39 @@ function App() {
     const handleStart = async () => {
         try {
             await api.startCapture();
-            showNotification('⏳ Starting capture in 10 seconds...', 'info');
-            setTimeout(() => {
-                showNotification('✅ Screenshot capture started!', 'success');
-            }, 10000);
+            showNotification('✅ Activity tracking started! Install the browser extension to detect scenarios.', 'success');
             fetchStatus();
         } catch (error) {
-            showNotification('❌ Failed to start capture', 'error');
+            showNotification('❌ Failed to start tracking', 'error');
         }
     };
 
     const handleStop = async () => {
         try {
             await api.stopCapture();
-            showNotification('⏸️ Screenshot capture stopped', 'info');
+            showNotification('⏸️ Activity tracking stopped', 'info');
             fetchStatus();
         } catch (error) {
-            showNotification('❌ Failed to stop capture', 'error');
+            showNotification('❌ Failed to stop tracking', 'error');
+        }
+    };
+
+    // Scenario handling
+    const handleConfirmScenario = async () => {
+        if (window.electronAPI?.confirmScenario) {
+            const result = await window.electronAPI.confirmScenario();
+            if (result.status === 'confirmed') {
+                showNotification('✅ Scenario confirmed! Processing started...', 'success');
+            }
+            fetchStatus();
+        }
+    };
+
+    const handleDismissScenario = async () => {
+        if (window.electronAPI?.dismissScenario) {
+            await window.electronAPI.dismissScenario();
+            showNotification('👋 Scenario dismissed', 'info');
+            fetchStatus();
         }
     };
 
@@ -107,9 +124,16 @@ function App() {
                     type={notification.type}
                     show={notification.show}
                 />
+
+                {/* Scenario confirmation dialog */}
+                <ScenarioDialog
+                    onConfirm={handleConfirmScenario}
+                    onDismiss={handleDismissScenario}
+                />
             </div>
         </Router>
     );
 }
 
 export default App;
+

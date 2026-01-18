@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "TimeLine Activity Tracker",
+  "version": "1.0.0",
+  "description": "Detects browsing activity and reports to TimeLine backend for content capture",
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "scripting",
+    "idle"
+  ],
+  "host_permissions": [
+    "http://localhost:5000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "TimeLine Tracker",
+    "default_popup": "popup.html"
+  }
+}

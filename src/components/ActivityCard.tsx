@@ -47,7 +47,7 @@ function formatTime(timestamp: string): string {
 
 export default function ActivityCard({ activity }: ActivityCardProps) {
     const { icon: IconComponent, color } = getActivityIcon(activity.title);
-    const screenshotUrl = api.getScreenshotUrl(activity.image_path);
+    const screenshotUrl = activity.image_path ? api.getScreenshotUrl(activity.image_path) : null;
 
     return (
         <div className="glass rounded-2xl overflow-hidden card-hover animate-slide-up">
@@ -66,7 +66,7 @@ export default function ActivityCard({ activity }: ActivityCardProps) {
             {activity.image_path && (
                 <div className="h-48 bg-black/30 overflow-hidden">
                     <img
-                        src={screenshotUrl}
+                        src={screenshotUrl || undefined}
                         alt="Screenshot"
                         className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                         onError={(e) => {

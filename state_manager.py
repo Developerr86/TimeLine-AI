@@ -233,7 +233,7 @@ class StateManager:
             return scenario
     
     def dismiss_scenario(self):
-        """Dismiss the pending scenario and return to monitoring."""
+        """Dismiss the pending scenario and return to monitoring after a delay."""
         with self._state_lock:
             if self._pending_scenario:
                 print(f"❌ Dismissed pending scenario: {self._pending_scenario.scenario_type.value}")
@@ -241,6 +241,11 @@ class StateManager:
             self._pending_scenario = None
             self._current_state = AppState.MONITORING
             self._last_state_change = datetime.utcnow()
+        
+        # Delay before resuming monitoring to prevent immediate re-triggering
+        print("⏳ Waiting 3 seconds before resuming monitoring...")
+        import time
+        time.sleep(3)
     
     def start_capture(self, session_id: str, capture_type: ScenarioType, metadata: Dict[str, Any] = None):
         """
@@ -290,8 +295,13 @@ class StateManager:
             
             if capture:
                 print(f"⏹️ Ended capture: {capture.capture_type.value}")
-            
-            return capture
+        
+        # Delay before resuming monitoring to prevent immediate re-triggering
+        print("⏳ Waiting 3 seconds before resuming monitoring...")
+        import time
+        time.sleep(3)
+        
+        return capture
     
     def get_status(self) -> Dict[str, Any]:
         """Get the full status for API responses."""

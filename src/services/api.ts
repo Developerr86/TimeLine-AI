@@ -31,10 +31,59 @@ export interface Config {
     enabled: boolean;
 }
 
+export interface PendingScenario {
+    scenario_type: 'WEB' | 'DOC' | 'VIDEO';
+    confidence: number;
+    detected_at: string;
+    metadata: Record<string, unknown>;
+    screenshot_path: string | null;
+}
+
+export interface StateStatus {
+    state: 'MONITORING' | 'AWAITING_USER_INPUT' | 'CAPTURING_WEB' | 'CAPTURING_DOC' | 'CAPTURING_VIDEO';
+    monitoring_enabled: boolean;
+    last_state_change: string;
+    pending_scenario: PendingScenario | null;
+    active_capture: {
+        session_id: string;
+        capture_type: string;
+        started_at: string;
+    } | null;
+}
+
+export interface OrchestratorStatus {
+    is_monitoring: boolean;
+    monitoring_enabled: boolean;
+    current_state: string;
+    browser_context: {
+        url: string | null;
+        title: string | null;
+        scenario: string | null;
+        timestamp: number | null;
+        idle_state: string | null;
+    } | null;
+    heartbeat_count: number;
+    scenarios_triggered: number;
+    last_heartbeat_time: string | null;
+    scenario_streak: number;
+    // Legacy fields for backward compatibility
+    current_screenshot?: string | null;
+    last_analysis_time?: string | null;
+    analysis_count?: number;
+}
+
 export interface StatusResponse {
-    enabled: boolean;
-    total_responses: number;
-    config: Config;
+    state: StateStatus;
+    orchestrator: OrchestratorStatus;
+    database: {
+        sessions: number;
+        texts: number;
+        media: number;
+    };
+    // Legacy fields for backward compatibility
+    enabled?: boolean;
+    total_responses?: number;
+    config?: Config;
 }
 
 export interface NotesResponse {
@@ -122,7 +171,10 @@ class ApiService {
         return this.request('/api/clear_context', { method: 'POST' });
     }
 
-    getScreenshotUrl(imagePath: string): string {
+    getScreenshotUrl(imagePath: string | null | undefined): string {
+        if (!imagePath) {
+            return '';
+        }
         // Extract filename from path
         const filename = imagePath.split(/[/\\]/).pop() || imagePath;
         return `${this.baseUrl}/screenshots/${filename}`;

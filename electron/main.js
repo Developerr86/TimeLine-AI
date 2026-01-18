@@ -101,7 +101,7 @@ async function checkBackendStatus() {
     const response = await fetch(`${BACKEND_URL}/api/state`);
     if (!response.ok) return;
 
-    const status = response.json() instanceof Promise ? await response.json() : response.json();
+    const status = await response.json();
     const currentState = status.state;
 
     // Check if state changed to AWAITING_USER_INPUT
@@ -132,7 +132,7 @@ function showScenarioNotification(scenario) {
     title: title,
     body: `Confidence: ${confidence}%\nClick to capture or dismiss`,
     icon: path.join(__dirname, '../src/assets/icon.png'),
-    silent: false,
+    silent: true,  // Suppress notification sounds
     urgency: 'normal',
     timeoutType: 'never'  // Stay until user interacts
   });
