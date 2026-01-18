@@ -66,10 +66,15 @@ export interface OrchestratorStatus {
     scenarios_triggered: number;
     last_heartbeat_time: string | null;
     scenario_streak: number;
+    // Activity queue fields (NEW)
+    pending_activities: PendingActivity[];
+    pending_activities_count: number;
+    current_activity: PendingActivity | null;
     // Legacy fields for backward compatibility
     current_screenshot?: string | null;
     last_analysis_time?: string | null;
     analysis_count?: number;
+    captured_scenarios?: unknown[];
 }
 
 export interface StatusResponse {
@@ -91,6 +96,30 @@ export interface NotesResponse {
     notes?: string;
     message?: string;
     activity_count?: number;
+}
+
+export interface PendingActivity {
+    id: string;
+    scenario: 'VIDEO' | 'DOC' | 'WEB';
+    url: string;
+    title: string;
+    detected_at: string;
+    processed: boolean;
+    processing: boolean;
+}
+
+export interface PendingActivityResponse {
+    activities: PendingActivity[];
+    count: number;
+    current_activity: PendingActivity | null;
+}
+
+export interface CurrentSessionResponse {
+    session_id: string | null;
+    is_recording: boolean;
+    transcript: string;
+    frames_captured: number;
+    audio_duration_seconds: number;
 }
 
 class ApiService {
@@ -178,6 +207,36 @@ class ApiService {
         // Extract filename from path
         const filename = imagePath.split(/[/\\]/).pop() || imagePath;
         return `${this.baseUrl}/screenshots/${filename}`;
+    }
+
+    // =========================================================================
+    // Activity Queue Methods (NEW - "Process Later" Workflow)
+    // =========================================================================
+
+    async getActivities(): Promise<PendingActivityResponse> {
+        return this.request<PendingActivityResponse>('/api/activities');
+    }
+
+    async processActivity(activityId: string): Promise<{ status: string; activity?: PendingActivity; message?: string }> {
+        return this.request('/api/activity/process', {
+            method: 'POST',
+            body: JSON.stringify({ activity_id: activityId }),
+        });
+    }
+
+    async stopActivity(): Promise<{ status: string; activity?: PendingActivity }> {
+        return this.request('/api/activity/stop', { method: 'POST' });
+    }
+
+    async dismissActivity(activityId: string): Promise<{ status: string; activity_id?: string }> {
+        return this.request('/api/activity/dismiss', {
+            method: 'POST',
+            body: JSON.stringify({ activity_id: activityId }),
+        });
+    }
+
+    async getCurrentSession(): Promise<CurrentSessionResponse> {
+        return this.request<CurrentSessionResponse>('/api/current_session');
     }
 }
 

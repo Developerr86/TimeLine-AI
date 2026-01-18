@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import TimelineView from './components/TimelineView';
@@ -6,6 +6,7 @@ import SettingsView from './components/SettingsView';
 import ControlPanel from './components/ControlPanel';
 import Notification from './components/Notification';
 import ScenarioDialog from './components/ScenarioDialog';
+import ActivityList from './components/ActivityList';
 import { api, StatusResponse } from './services/api';
 
 export interface NotificationState {
@@ -43,6 +44,23 @@ function App() {
         const interval = setInterval(fetchStatus, 5000);
         return () => clearInterval(interval);
     }, [fetchStatus]);
+
+    // Track previous pending activities count for notifications
+    const prevActivitiesCountRef = useRef<number>(0);
+
+    useEffect(() => {
+        if (status?.orchestrator?.pending_activities_count !== undefined) {
+            const currentCount = status.orchestrator.pending_activities_count;
+            if (currentCount > prevActivitiesCountRef.current && prevActivitiesCountRef.current >= 0) {
+                // New activity detected
+                const latestActivity = status.orchestrator.pending_activities?.[0];
+                if (latestActivity) {
+                    showNotification(`📥 Video Detected: ${latestActivity.title}`, 'info');
+                }
+            }
+            prevActivitiesCountRef.current = currentCount;
+        }
+    }, [status?.orchestrator?.pending_activities_count, status?.orchestrator?.pending_activities, showNotification]);
 
     const handleStart = async () => {
         try {
@@ -96,6 +114,13 @@ function App() {
                         status={status}
                         onStart={handleStart}
                         onStop={handleStop}
+                    />
+
+                    {/* Pending Activities List */}
+                    <ActivityList
+                        showNotification={showNotification}
+                        onProcess={() => fetchStatus()}
+                        onDismiss={() => fetchStatus()}
                     />
 
                     <Routes>

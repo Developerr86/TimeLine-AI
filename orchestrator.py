@@ -5,8 +5,10 @@ Event-driven orchestrator that receives heartbeats from the browser extension.
 
 import threading
 import time
+import uuid
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from state_manager import (
     get_state_manager, StateManager, AppState, 
@@ -18,6 +20,29 @@ from models import (
 )
 
 
+@dataclass
+class PendingActivity:
+    """Represents a queued activity waiting for user processing."""
+    id: str
+    scenario: str  # VIDEO, DOC, WEB
+    url: str
+    title: str
+    detected_at: datetime = field(default_factory=datetime.utcnow)
+    processed: bool = False
+    processing: bool = False
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "scenario": self.scenario,
+            "url": self.url,
+            "title": self.title,
+            "detected_at": self.detected_at.isoformat(),
+            "processed": self.processed,
+            "processing": self.processing
+        }
+
+
 class Orchestrator:
     """
     Main orchestrator for the Content Capture Pipeline.
@@ -25,6 +50,7 @@ class Orchestrator:
     Responsibilities:
     - Receive heartbeats from browser extension
     - Detect scenario changes (Web/Doc/Video)
+    - Queue activities for user processing (instead of auto-processing)
     - Coordinate state transitions
     - Manage capture sessions
     
@@ -63,6 +89,10 @@ class Orchestrator:
         # Track processed URLs to prevent duplicate notifications
         # Key: (url, scenario) tuple, Value: {"title": str, "processed": bool, "triggered_at": datetime}
         self._captured_scenarios: Dict[tuple, Dict[str, Any]] = {}
+        
+        # NEW: Pending activities queue (activities waiting for user to process)
+        self._pending_activities: List[PendingActivity] = []
+        self._current_activity: Optional[PendingActivity] = None
         
         # Stats
         self._heartbeat_count = 0
@@ -198,12 +228,19 @@ class Orchestrator:
         return True
     
     def _trigger_scenario(self, scenario: str, url: str, title: str):
-        """Trigger a pending scenario for user confirmation."""
+        """Queue a new activity for user processing (instead of auto-triggering)."""
         try:
             scenario_type = ScenarioType(scenario)
         except ValueError:
             print(f"⚠️ Unknown scenario type: {scenario}")
             return
+        
+        # Check if this URL is already in pending activities
+        with self._lock:
+            for activity in self._pending_activities:
+                if activity.url == url and activity.scenario == scenario:
+                    print(f"⏭️ Activity already queued: {scenario} - {title or url}")
+                    return
         
         # Record this scenario as captured (pending processing)
         scenario_key = (url, scenario)
@@ -213,19 +250,20 @@ class Orchestrator:
             "triggered_at": datetime.utcnow()
         }
         
-        pending = PendingScenario(
-            scenario_type=scenario_type,
-            confidence=1.0,  # Extension detection is binary, not probabilistic
-            metadata={
-                "url": url,
-                "title": title,
-                "source": "browser_extension"
-            }
+        # Create and queue the new activity
+        activity = PendingActivity(
+            id=str(uuid.uuid4()),
+            scenario=scenario,
+            url=url,
+            title=title or url,
+            detected_at=datetime.utcnow()
         )
         
-        if self._state_manager.set_pending_scenario(pending):
-            self._scenarios_triggered += 1
-            print(f"🔔 Scenario triggered: {scenario} - {title or url}")
+        with self._lock:
+            self._pending_activities.append(activity)
+        
+        self._scenarios_triggered += 1
+        print(f"📥 Activity queued: {scenario} - {title or url} (ID: {activity.id[:8]}...)")
     
     @property
     def browser_context(self) -> Dict[str, Any]:
@@ -260,6 +298,136 @@ class Orchestrator:
         """Clear all captured scenarios (allows re-detection)."""
         self._captured_scenarios.clear()
     
+    # =========================================================================
+    # Activity Queue Management (NEW)
+    # =========================================================================
+    
+    def get_pending_activities(self) -> List[Dict[str, Any]]:
+        """Get list of pending activities for frontend display."""
+        with self._lock:
+            return [activity.to_dict() for activity in self._pending_activities]
+    
+    def get_activity_by_id(self, activity_id: str) -> Optional[PendingActivity]:
+        """Get a specific activity by ID."""
+        with self._lock:
+            for activity in self._pending_activities:
+                if activity.id == activity_id:
+                    return activity
+        return None
+    
+    def start_activity_processing(self, activity_id: str) -> Dict[str, Any]:
+        """
+        Start processing a specific activity.
+        Transitions state from MONITORING to PROCESSING, then to CAPTURING_VIDEO.
+        
+        Args:
+            activity_id: The ID of the activity to process
+            
+        Returns:
+            Dict with status and any errors
+        """
+        result = {
+            "success": False,
+            "activity_id": activity_id,
+            "errors": []
+        }
+        
+        # Find the activity
+        activity = self.get_activity_by_id(activity_id)
+        if not activity:
+            result["errors"].append("Activity not found")
+            return result
+        
+        if activity.processing:
+            result["errors"].append("Activity is already being processed")
+            return result
+        
+        if activity.processed:
+            result["errors"].append("Activity has already been processed")
+            return result
+        
+        # Transition state to PROCESSING
+        if not self._state_manager.transition_to(AppState.PROCESSING):
+            result["errors"].append(f"Cannot transition to PROCESSING from {self._state_manager.current_state.value}")
+            return result
+        
+        # Mark activity as processing
+        with self._lock:
+            activity.processing = True
+            self._current_activity = activity
+        
+        result["success"] = True
+        result["activity"] = activity.to_dict()
+        print(f"▶️ Started processing activity: {activity.scenario} - {activity.title}")
+        
+        return result
+    
+    def stop_activity_processing(self) -> Dict[str, Any]:
+        """
+        Stop processing the current activity and return to MONITORING.
+        
+        Returns:
+            Dict with status and activity info
+        """
+        result = {
+            "success": False,
+            "activity": None,
+            "errors": []
+        }
+        
+        with self._lock:
+            if self._current_activity is None:
+                result["errors"].append("No activity is currently being processed")
+                return result
+            
+            activity = self._current_activity
+            activity.processing = False
+            activity.processed = True
+            
+            # Remove from pending list
+            self._pending_activities = [a for a in self._pending_activities if a.id != activity.id]
+            
+            result["activity"] = activity.to_dict()
+            self._current_activity = None
+        
+        # Transition back to MONITORING
+        self._state_manager.reset()  # Force reset to MONITORING
+        
+        result["success"] = True
+        print(f"⏹️ Stopped processing activity: {activity.scenario} - {activity.title}")
+        
+        return result
+    
+    def dismiss_activity(self, activity_id: str) -> bool:
+        """
+        Dismiss an activity from the pending list without processing.
+        
+        Args:
+            activity_id: The ID of the activity to dismiss
+            
+        Returns:
+            True if activity was found and dismissed
+        """
+        with self._lock:
+            for activity in self._pending_activities:
+                if activity.id == activity_id:
+                    self._pending_activities.remove(activity)
+                    # Also remove from captured scenarios to allow re-detection
+                    scenario_key = (activity.url, activity.scenario)
+                    if scenario_key in self._captured_scenarios:
+                        del self._captured_scenarios[scenario_key]
+                    print(f"🗑️ Dismissed activity: {activity.scenario} - {activity.title}")
+                    return True
+        return False
+    
+    def clear_pending_activities(self):
+        """Clear all pending activities."""
+        with self._lock:
+            self._pending_activities.clear()
+            self._current_activity = None
+        self._captured_scenarios.clear()
+        print("🗑️ Cleared all pending activities")
+    
     def get_status(self) -> Dict[str, Any]:
         """Get orchestrator status."""
         return {
@@ -272,6 +440,10 @@ class Orchestrator:
             "last_heartbeat_time": self._last_heartbeat_time.isoformat() if self._last_heartbeat_time else None,
             "scenario_streak": self._scenario_streak,
             "captured_scenarios": self.get_captured_scenarios(),
+            # NEW: Activity queue status
+            "pending_activities": self.get_pending_activities(),
+            "pending_activities_count": len(self._pending_activities),
+            "current_activity": self._current_activity.to_dict() if self._current_activity else None,
         }
 
 

@@ -2,15 +2,22 @@
  * TimeLine Activity Tracker - Background Service Worker
  * 
  * Detects user activity based on active tab URL and reports to backend.
+ * Also handles video frame capture forwarding to backend.
  * Runs on a 3-second interval.
  */
 
 // Configuration
 const CONFIG = {
     BACKEND_URL: 'http://localhost:5000/api/heartbeat',
+    FRAME_INGEST_URL: 'http://localhost:5000/api/ingest/frame',
     POLL_INTERVAL_MS: 3000,
     IDLE_DETECTION_SECONDS: 60
 };
+
+// Frame capture state
+let isFrameCapturing = false;
+let captureTabId = null;
+let framesSent = 0;
 
 // Scenario detection patterns
 const SCENARIO_PATTERNS = {
@@ -154,7 +161,107 @@ async function sendHeartbeat(data) {
  */
 function handleBackendCommand(command) {
     console.log('[TimeLine] Received command:', command);
-    // Future: Handle commands like 'scrape_page', 'get_content', etc.
+
+    switch (command) {
+        case 'START_CAPTURE':
+            startFrameCapture();
+            break;
+        case 'STOP_CAPTURE':
+            stopFrameCapture();
+            break;
+        default:
+            console.log('[TimeLine] Unknown command:', command);
+    }
+}
+
+/**
+ * Start frame capture on current video tab
+ */
+async function startFrameCapture() {
+    try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tabs || tabs.length === 0) {
+            console.warn('[TimeLine] No active tab for frame capture');
+            return;
+        }
+
+        captureTabId = tabs[0].id;
+        isFrameCapturing = true;
+        framesSent = 0;
+
+        // Send message to content script to start capturing
+        chrome.tabs.sendMessage(captureTabId, { type: 'START_CAPTURE' }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.error('[TimeLine] Failed to start capture:', chrome.runtime.lastError.message);
+                isFrameCapturing = false;
+            } else {
+                console.log('[TimeLine] Frame capture started on tab:', captureTabId);
+            }
+        });
+    } catch (error) {
+        console.error('[TimeLine] Error starting frame capture:', error);
+    }
+}
+
+/**
+ * Stop frame capture
+ */
+function stopFrameCapture() {
+    if (!isFrameCapturing || !captureTabId) {
+        return;
+    }
+
+    chrome.tabs.sendMessage(captureTabId, { type: 'STOP_CAPTURE' }, (response) => {
+        if (chrome.runtime.lastError) {
+            console.error('[TimeLine] Failed to stop capture:', chrome.runtime.lastError.message);
+        } else {
+            console.log('[TimeLine] Frame capture stopped, total frames sent:', framesSent);
+        }
+    });
+
+    isFrameCapturing = false;
+    captureTabId = null;
+}
+
+/**
+ * Send a captured frame to the backend
+ * @param {Object} frameData - Frame data from content script
+ */
+async function sendFrameToBackend(frameData) {
+    if (!frameData || !frameData.data) {
+        return;
+    }
+
+    try {
+        const response = await fetch(CONFIG.FRAME_INGEST_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                frame_data: frameData.data,
+                frame_number: frameData.frameNumber,
+                video_time: frameData.videoTime,
+                timestamp: frameData.timestamp
+            })
+        });
+
+        if (!response.ok) {
+            console.warn('[TimeLine] Frame upload failed:', response.status);
+            return;
+        }
+
+        framesSent++;
+        const result = await response.json();
+
+        if (result.saved) {
+            console.log(`[TimeLine] Frame ${framesSent} saved (similarity: ${result.similarity?.toFixed(2) || 'N/A'})`);
+        } else {
+            console.log(`[TimeLine] Frame ${framesSent} skipped (similarity: ${result.similarity?.toFixed(2) || 'N/A'})`);
+        }
+    } catch (error) {
+        console.debug('[TimeLine] Frame upload error:', error.message);
+    }
 }
 
 /**
@@ -281,19 +388,81 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
     }
 });
 
-// Handle messages from popup
+// Handle messages from popup and content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'GET_STATUS') {
-        sendResponse({
-            enabled: isEnabled,
-            lastUrl: lastUrl,
-            lastScenario: lastScenario
-        });
-    } else if (message.type === 'SET_ENABLED') {
-        setEnabled(message.enabled);
-        sendResponse({ success: true });
+    switch (message.type) {
+        case 'GET_STATUS':
+            sendResponse({
+                enabled: isEnabled,
+                lastUrl: lastUrl,
+                lastScenario: lastScenario,
+                isCapturing: isFrameCapturing,
+                framesSent: framesSent
+            });
+            break;
+
+        case 'SET_ENABLED':
+            setEnabled(message.enabled);
+            sendResponse({ success: true });
+            break;
+
+        // Frame capture commands from popup
+        case 'START_FRAME_CAPTURE':
+            startFrameCapture();
+            sendResponse({ success: true });
+            break;
+
+        case 'STOP_FRAME_CAPTURE':
+            stopFrameCapture();
+            sendResponse({ success: true, framesSent: framesSent });
+            break;
+
+        case 'GET_CAPTURE_STATUS':
+            sendResponse({
+                isCapturing: isFrameCapturing,
+                captureTabId: captureTabId,
+                framesSent: framesSent
+            });
+            break;
+
+        // Messages from content script
+        case 'FRAME_CAPTURED':
+            sendFrameToBackend(message);
+            sendResponse({ received: true });
+            break;
+
+        case 'CAPTURE_STARTED':
+            console.log('[TimeLine] Content script started capture:', message.url);
+            sendResponse({ acknowledged: true });
+            break;
+
+        case 'CAPTURE_STOPPED':
+            console.log('[TimeLine] Content script stopped capture, frames:', message.frameCount);
+            isFrameCapturing = false;
+            sendResponse({ acknowledged: true });
+            break;
+
+        case 'CAPTURE_ERROR':
+            console.error('[TimeLine] Capture error:', message.error);
+            isFrameCapturing = false;
+            sendResponse({ acknowledged: true });
+            break;
+
+        case 'VIDEO_PLAY_DETECTED':
+            console.log('[TimeLine] Video playback detected:', message.title);
+            sendResponse({ acknowledged: true });
+            break;
+
+        case 'VIDEO_PAUSE_DETECTED':
+            console.log('[TimeLine] Video paused:', message.url);
+            sendResponse({ acknowledged: true });
+            break;
+
+        default:
+            sendResponse({ error: 'Unknown message type' });
     }
-    return true;
+
+    return true; // Keep channel open for async response
 });
 
 // Start polling when service worker loads

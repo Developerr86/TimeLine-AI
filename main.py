@@ -150,6 +150,168 @@ def heartbeat():
     
     return jsonify(result)
 
+# ============================================================================
+# Activity Queue Endpoints (NEW - "Process Later" Workflow)
+# ============================================================================
+
+@app.route('/api/activities', methods=['GET'])
+def get_activities():
+    """
+    Get list of pending activities waiting for user processing.
+    Returns activities that have been detected but not yet processed.
+    """
+    orch = get_orchestrator()
+    activities = orch.get_pending_activities()
+    
+    return jsonify({
+        "activities": activities,
+        "count": len(activities),
+        "current_activity": orch._current_activity.to_dict() if orch._current_activity else None
+    })
+
+
+@app.route('/api/activity/process', methods=['POST'])
+def process_activity():
+    """
+    Start processing a specific activity.
+    Request body: { "activity_id": "uuid-here" }
+    
+    This transitions the system from MONITORING to PROCESSING state,
+    and initiates the capture flow for the activity.
+    """
+    data = request.get_json()
+    if not data or not data.get('activity_id'):
+        return jsonify({'status': 'error', 'message': 'activity_id required'}), 400
+    
+    activity_id = data['activity_id']
+    orch = get_orchestrator()
+    
+    result = orch.start_activity_processing(activity_id)
+    
+    if not result.get('success'):
+        return jsonify({
+            'status': 'error',
+            'errors': result.get('errors', [])
+        }), 400
+    
+    # Get the activity details to determine the capture type
+    activity = orch.get_activity_by_id(activity_id)
+    
+    # For VIDEO activities, start the video capture handler
+    if activity and activity.scenario == 'VIDEO':
+        import uuid
+        from models import CaptureSession, SessionType
+        
+        # Create a new capture session in the database
+        db = get_db()
+        try:
+            session_id = str(uuid.uuid4())
+            session = CaptureSession(
+                id=session_id,
+                type=SessionType.VIDEO,
+                source_url=activity.url,
+                title=activity.title
+            )
+            db.add(session)
+            db.commit()
+            print(f"📹 Created video capture session: {session_id}")
+            
+            # Start the video capture handler (this will start audio recording + transcription)
+            handler = get_video_handler()
+            capture_result = handler.start(session_id)
+            
+            if capture_result.get('success'):
+                print(f"✅ Video capture started successfully")
+                result['capture_session_id'] = session_id
+                result['streaming_transcription'] = capture_result.get('streaming_transcription', False)
+            else:
+                print(f"⚠️ Video capture start had errors: {capture_result.get('errors')}")
+                result['capture_errors'] = capture_result.get('errors', [])
+                
+        except Exception as e:
+            db.rollback()
+            print(f"❌ Failed to create capture session: {e}")
+            result['capture_errors'] = [str(e)]
+        finally:
+            db.close()
+    
+    return jsonify({
+        'status': 'processing',
+        'activity_id': activity_id,
+        'activity': result.get('activity'),
+        'capture_session_id': result.get('capture_session_id'),
+        'streaming_transcription': result.get('streaming_transcription', False),
+        'message': f'Started processing {activity.scenario} activity'
+    })
+
+
+@app.route('/api/activity/stop', methods=['POST'])
+def stop_activity():
+    """
+    Stop processing the current activity and return to monitoring.
+    This also stops any active video capture and saves the transcript.
+    """
+    # First, stop the video capture handler (if recording)
+    handler = get_video_handler()
+    capture_result = None
+    if handler.is_recording:
+        print("⏹️ Stopping video capture...")
+        capture_result = handler.stop()
+        if capture_result.get('success'):
+            print(f"✅ Video capture stopped successfully")
+            print(f"   Frames saved: {capture_result.get('saved_frames', 0)}")
+            print(f"   Audio duration: {capture_result.get('audio_duration', 0):.1f}s")
+            if capture_result.get('transcript'):
+                print(f"   Transcript length: {len(capture_result.get('transcript', ''))} chars")
+        else:
+            print(f"⚠️ Video capture stop had errors: {capture_result.get('errors')}")
+    
+    # Then stop the activity processing in orchestrator
+    orch = get_orchestrator()
+    result = orch.stop_activity_processing()
+    
+    if not result.get('success'):
+        return jsonify({
+            'status': 'error',
+            'errors': result.get('errors', [])
+        }), 400
+    
+    response = {
+        'status': 'stopped',
+        'activity': result.get('activity')
+    }
+    
+    # Include capture results if available
+    if capture_result:
+        response['capture_result'] = {
+            'success': capture_result.get('success'),
+            'saved_frames': capture_result.get('saved_frames', 0),
+            'audio_duration': capture_result.get('audio_duration', 0),
+            'transcript_length': len(capture_result.get('transcript', '')),
+            'chunks_processed': capture_result.get('chunks_processed', 0)
+        }
+    
+    return jsonify(response)
+
+
+@app.route('/api/activity/dismiss', methods=['POST'])
+def dismiss_activity():
+    """
+    Dismiss a pending activity without processing.
+    Request body: { "activity_id": "uuid-here" }
+    """
+    data = request.get_json()
+    if not data or not data.get('activity_id'):
+        return jsonify({'status': 'error', 'message': 'activity_id required'}), 400
+    
+    activity_id = data['activity_id']
+    orch = get_orchestrator()
+    
+    if orch.dismiss_activity(activity_id):
+        return jsonify({'status': 'dismissed', 'activity_id': activity_id})
+    else:
+        return jsonify({'status': 'error', 'message': 'Activity not found'}), 404
+
 
 # ============================================================================
 # Scenario Management Endpoints
@@ -499,6 +661,72 @@ def video_capture_capabilities():
     """Get video capture capabilities (what's installed)."""
     from scenarios.video_capture import VideoCaptureHandler
     return jsonify(VideoCaptureHandler.get_capabilities())
+
+
+# ============================================================================
+# Frame Ingestion Endpoints (NEW - Extension-based frame capture)
+# ============================================================================
+
+@app.route('/api/ingest/frame', methods=['POST'])
+def ingest_frame():
+    """
+    Receive a video frame from the browser extension.
+    Request body: {
+        "frame_data": "data:image/jpeg;base64,...",
+        "frame_number": 1,
+        "video_time": 12.5,
+        "timestamp": 1234567890
+    }
+    
+    The frame is compared against the last saved frame using SSIM.
+    Frames with similarity > 60% are discarded to avoid duplicates.
+    """
+    data = request.get_json()
+    if not data or not data.get('frame_data'):
+        return jsonify({'status': 'error', 'message': 'frame_data required'}), 400
+    
+    handler = get_video_handler()
+    
+    # Check if we're in a capture session
+    if not handler.is_recording:
+        return jsonify({
+            'status': 'error',
+            'message': 'No active capture session',
+            'saved': False
+        }), 400
+    
+    # Ingest the frame
+    result = handler.ingest_frame(
+        frame_data=data['frame_data'],
+        frame_number=data.get('frame_number'),
+        video_time=data.get('video_time'),
+        timestamp=data.get('timestamp')
+    )
+    
+    return jsonify(result)
+
+
+@app.route('/api/current_session', methods=['GET'])
+def get_current_session():
+    """
+    Get the current capture session status including live transcript.
+    Used by frontend to display real-time transcription progress.
+    """
+    handler = get_video_handler()
+    state_mgr = get_state_manager()
+    orch = get_orchestrator()
+    
+    # Get transcription status if available
+    transcriber_status = handler.get_transcriber_status() if hasattr(handler, 'get_transcriber_status') else {}
+    
+    return jsonify({
+        'is_recording': handler.is_recording,
+        'session_id': handler._session_id,
+        'current_state': state_mgr.current_state.value,
+        'current_activity': orch._current_activity.to_dict() if orch._current_activity else None,
+        'capture_status': handler.get_status(),
+        'transcriber': transcriber_status
+    })
 
 
 # ============================================================================

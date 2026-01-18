@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "TimeLine Activity Tracker",
-  "version": "1.0.0",
-  "description": "Detects browsing activity and reports to TimeLine backend for content capture",
+  "version": "1.1.0",
+  "description": "Detects browsing activity and captures video frames for TimeLine backend",
   "permissions": [
     "tabs",
     "activeTab",
@@ -10,7 +10,30 @@
     "idle"
   ],
   "host_permissions": [
-    "http://localhost:5000/*"
+    "http://localhost:5000/*",
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://www.youtube.com/*",
+        "*://youtube.com/*",
+        "*://www.vimeo.com/*",
+        "*://vimeo.com/*",
+        "*://*.netflix.com/*",
+        "*://*.coursera.org/*",
+        "*://*.udemy.com/*",
+        "*://*.edx.org/*",
+        "*://*.skillshare.com/*",
+        "*://*.linkedin.com/learning/*",
+        "*://*.pluralsight.com/*",
+        "*://*.twitch.tv/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
   ],
   "background": {
     "service_worker": "background.js"

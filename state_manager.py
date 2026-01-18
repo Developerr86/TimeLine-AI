@@ -14,6 +14,7 @@ class AppState(str, Enum):
     """Application states for the orchestrator."""
     MONITORING = "MONITORING"                   # Default loop, VLM checking screen
     AWAITING_USER_INPUT = "AWAITING_USER_INPUT" # Scenario detected, waiting for confirmation
+    PROCESSING = "PROCESSING"                   # Actively processing a queued activity
     CAPTURING_WEB = "CAPTURING_WEB"             # Actively scraping a URL
     CAPTURING_DOC = "CAPTURING_DOC"             # Actively processing a document
     CAPTURING_VIDEO = "CAPTURING_VIDEO"         # Actively recording video/audio
@@ -155,13 +156,14 @@ class StateManager:
             
             # Validate transitions
             valid_transitions = {
-                AppState.MONITORING: [AppState.AWAITING_USER_INPUT],
+                AppState.MONITORING: [AppState.AWAITING_USER_INPUT, AppState.PROCESSING],
                 AppState.AWAITING_USER_INPUT: [
                     AppState.MONITORING,
                     AppState.CAPTURING_WEB,
                     AppState.CAPTURING_DOC,
                     AppState.CAPTURING_VIDEO
                 ],
+                AppState.PROCESSING: [AppState.CAPTURING_VIDEO, AppState.MONITORING],
                 AppState.CAPTURING_WEB: [AppState.MONITORING],
                 AppState.CAPTURING_DOC: [AppState.MONITORING],
                 AppState.CAPTURING_VIDEO: [AppState.MONITORING],
