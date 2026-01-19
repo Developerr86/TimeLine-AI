@@ -178,6 +178,11 @@ function handleBackendCommand(command) {
  * Start frame capture on current video tab
  */
 async function startFrameCapture() {
+    // Prevent duplicate start commands
+    if (isFrameCapturing) {
+        return;
+    }
+
     try {
         const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
         if (!tabs || tabs.length === 0) {
@@ -189,13 +194,15 @@ async function startFrameCapture() {
         isFrameCapturing = true;
         framesSent = 0;
 
+        console.log('[TimeLine] Starting frame capture on tab:', captureTabId);
+
         // Send message to content script to start capturing
         chrome.tabs.sendMessage(captureTabId, { type: 'START_CAPTURE' }, (response) => {
             if (chrome.runtime.lastError) {
                 console.error('[TimeLine] Failed to start capture:', chrome.runtime.lastError.message);
                 isFrameCapturing = false;
             } else {
-                console.log('[TimeLine] Frame capture started on tab:', captureTabId);
+                console.log('[TimeLine] Frame capture started successfully');
             }
         });
     } catch (error) {

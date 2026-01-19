@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import TimelineView from './components/TimelineView';
 import SettingsView from './components/SettingsView';
@@ -7,12 +7,53 @@ import ControlPanel from './components/ControlPanel';
 import Notification from './components/Notification';
 import ScenarioDialog from './components/ScenarioDialog';
 import ActivityList from './components/ActivityList';
+import ScenarioDetailsView from './components/ScenarioDetailsView';
 import { api, StatusResponse } from './services/api';
 
 export interface NotificationState {
     message: string;
     type: 'info' | 'success' | 'error';
     show: boolean;
+}
+
+// Wrapper component to conditionally render control panel
+function MainLayout({
+    status,
+    onStart,
+    onStop,
+    showNotification,
+    fetchStatus,
+    children
+}: {
+    status: StatusResponse | null;
+    onStart: () => void;
+    onStop: () => void;
+    showNotification: (message: string, type: 'info' | 'success' | 'error') => void;
+    fetchStatus: () => void;
+    children: React.ReactNode;
+}) {
+    const location = useLocation();
+    const isScenarioPage = location.pathname.startsWith('/scenario/');
+
+    return (
+        <>
+            {!isScenarioPage && (
+                <>
+                    <ControlPanel
+                        status={status}
+                        onStart={onStart}
+                        onStop={onStop}
+                    />
+                    <ActivityList
+                        showNotification={showNotification}
+                        onProcess={() => fetchStatus()}
+                        onDismiss={() => fetchStatus()}
+                    />
+                </>
+            )}
+            {children}
+        </>
+    );
 }
 
 function App() {
@@ -110,38 +151,41 @@ function App() {
                 <Sidebar />
 
                 <main className="flex-1 ml-20 p-8 pt-12">
-                    <ControlPanel
+                    <MainLayout
                         status={status}
                         onStart={handleStart}
                         onStop={handleStop}
-                    />
-
-                    {/* Pending Activities List */}
-                    <ActivityList
                         showNotification={showNotification}
-                        onProcess={() => fetchStatus()}
-                        onDismiss={() => fetchStatus()}
-                    />
-
-                    <Routes>
-                        <Route
-                            path="/"
-                            element={
-                                <TimelineView
-                                    showNotification={showNotification}
-                                    onRefresh={fetchStatus}
-                                />
-                            }
-                        />
-                        <Route
-                            path="/settings"
-                            element={
-                                <SettingsView
-                                    showNotification={showNotification}
-                                />
-                            }
-                        />
-                    </Routes>
+                        fetchStatus={fetchStatus}
+                    >
+                        <Routes>
+                            <Route
+                                path="/"
+                                element={
+                                    <TimelineView
+                                        showNotification={showNotification}
+                                        onRefresh={fetchStatus}
+                                    />
+                                }
+                            />
+                            <Route
+                                path="/settings"
+                                element={
+                                    <SettingsView
+                                        showNotification={showNotification}
+                                    />
+                                }
+                            />
+                            <Route
+                                path="/scenario/:sessionId"
+                                element={
+                                    <ScenarioDetailsView
+                                        showNotification={showNotification}
+                                    />
+                                }
+                            />
+                        </Routes>
+                    </MainLayout>
                 </main>
 
                 <Notification
@@ -161,4 +205,3 @@ function App() {
 }
 
 export default App;
-

@@ -140,6 +140,11 @@ def heartbeat():
         "scenario": "VIDEO" | "DOC" | "WEB" | "OTHER",
         "timestamp": 1234567890
     }
+    
+    Response includes command for extension:
+    - START_CAPTURE: Start capturing video frames
+    - STOP_CAPTURE: Stop capturing video frames
+    - None: No action needed
     """
     data = request.get_json()
     if not data:
@@ -148,7 +153,59 @@ def heartbeat():
     orch = get_orchestrator()
     result = orch.handle_heartbeat(data)
     
+    # Check if we should send capture command to extension
+    handler = get_video_handler()
+    if handler.is_recording:
+        result['command'] = 'START_CAPTURE'
+    else:
+        # If we were capturing but now stopped, send stop command
+        result['command'] = None
+    
     return jsonify(result)
+
+
+@app.route('/api/ingest/frame', methods=['POST'])
+def ingest_frame():
+    """
+    Receive a captured video frame from the browser extension.
+    Request body: {
+        "frame_data": "data:image/jpeg;base64,...",
+        "frame_number": 1,
+        "video_time": 123.45,
+        "timestamp": 1234567890
+    }
+    
+    The frame is processed by VideoCaptureHandler which:
+    - Computes SSIM with previous frame for deduplication
+    - Saves unique frames to media/video/<session_id>/frames/
+    """
+    data = request.get_json()
+    if not data or not data.get('frame_data'):
+        return jsonify({'status': 'error', 'message': 'No frame data provided'}), 400
+    
+    handler = get_video_handler()
+    
+    if not handler.is_recording:
+        return jsonify({
+            'status': 'not_recording',
+            'message': 'Video capture not active'
+        }), 400
+    
+    # Extract base64 data (remove data URL prefix if present)
+    frame_data = data.get('frame_data', '')
+    if frame_data.startswith('data:'):
+        # Remove "data:image/jpeg;base64," prefix
+        frame_data = frame_data.split(',', 1)[-1]
+    
+    # Ingest the frame
+    result = handler.ingest_frame(
+        frame_data=frame_data,
+        video_time=data.get('video_time', 0),
+        frame_number=data.get('frame_number', 0)
+    )
+    
+    return jsonify(result)
+
 
 # ============================================================================
 # Activity Queue Endpoints (NEW - "Process Later" Workflow)
@@ -311,6 +368,181 @@ def dismiss_activity():
         return jsonify({'status': 'dismissed', 'activity_id': activity_id})
     else:
         return jsonify({'status': 'error', 'message': 'Activity not found'}), 404
+
+
+# ============================================================================
+# Session Details Endpoints (for Scenario Details Page)
+# ============================================================================
+
+@app.route('/api/session/<session_id>', methods=['GET'])
+def get_session_details(session_id):
+    """
+    Get session details including capture status and transcriber state.
+    Used by the Scenario Details page.
+    """
+    from models import CaptureSession, MEDIA_VIDEO_DIR
+    
+    db = get_db()
+    try:
+        session = db.query(CaptureSession).filter_by(id=session_id).first()
+        if not session:
+            return jsonify({'status': 'error', 'message': 'Session not found'}), 404
+        
+        # Get video handler status
+        handler = get_video_handler()
+        capture_status = handler.get_status()
+        transcriber_status = handler.get_transcriber_status()
+        
+        # Check if this session is currently active
+        is_active = handler._session_id == session_id and handler.is_recording
+        
+        return jsonify({
+            'session': {
+                'id': session.id,
+                'type': session.type.value if session.type else None,
+                'source_url': session.source_url,
+                'title': session.title,
+                'start_time': session.start_time.isoformat() if session.start_time else None,
+                'end_time': session.end_time.isoformat() if session.end_time else None,
+            },
+            'is_active': is_active,
+            'capture_status': capture_status if is_active else None,
+            'transcriber_status': transcriber_status if is_active else None
+        })
+    finally:
+        db.close()
+
+
+@app.route('/api/session/<session_id>/frames', methods=['GET'])
+def get_session_frames(session_id):
+    """
+    Get list of captured frames with timestamps for a session.
+    """
+    from models import MEDIA_VIDEO_DIR
+    import os
+    import re
+    
+    frames_dir = MEDIA_VIDEO_DIR / session_id / "frames"
+    
+    if not frames_dir.exists():
+        return jsonify({'frames': [], 'count': 0})
+    
+    frames = []
+    for filename in sorted(os.listdir(frames_dir)):
+        if filename.endswith(('.jpg', '.jpeg', '.png')):
+            filepath = frames_dir / filename
+            stat = filepath.stat()
+            
+            # Try to extract video time from filename (format: frame_00001_t123_timestamp.jpg)
+            video_time = None
+            time_match = re.search(r'_t(\d+)_', filename)
+            if time_match:
+                video_time = int(time_match.group(1))
+            
+            frames.append({
+                'filename': filename,
+                'path': f'/api/media/video/{session_id}/frames/{filename}',
+                'size': stat.st_size,
+                'modified': stat.st_mtime,
+                'video_time': video_time
+            })
+    
+    return jsonify({
+        'frames': frames,
+        'count': len(frames)
+    })
+
+
+@app.route('/api/session/<session_id>/transcript', methods=['GET'])
+def get_session_transcript(session_id):
+    """
+    Read the transcript.txt file for a session.
+    """
+    from models import MEDIA_VIDEO_DIR
+    
+    transcript_path = MEDIA_VIDEO_DIR / session_id / "transcript.txt"
+    
+    if not transcript_path.exists():
+        return jsonify({
+            'content': '',
+            'exists': False,
+            'chunks': []
+        })
+    
+    try:
+        with open(transcript_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Parse chunks from format: [MM:SS] text
+        import re
+        chunks = []
+        for line in content.strip().split('\n'):
+            if line.strip():
+                match = re.match(r'\[(\d+):(\d+)\]\s*(.+)', line)
+                if match:
+                    minutes, seconds, text = match.groups()
+                    time_seconds = int(minutes) * 60 + int(seconds)
+                    chunks.append({
+                        'time': time_seconds,
+                        'timestamp': f"[{minutes}:{seconds}]",
+                        'text': text.strip()
+                    })
+                else:
+                    chunks.append({'text': line.strip()})
+        
+        return jsonify({
+            'content': content,
+            'exists': True,
+            'chunks': chunks
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/session/<session_id>/transcript', methods=['PUT'])
+def update_session_transcript(session_id):
+    """
+    Save edited transcript content to transcript.txt file.
+    """
+    from models import MEDIA_VIDEO_DIR
+    
+    data = request.get_json()
+    if not data or 'content' not in data:
+        return jsonify({'status': 'error', 'message': 'content required'}), 400
+    
+    session_dir = MEDIA_VIDEO_DIR / session_id
+    if not session_dir.exists():
+        return jsonify({'status': 'error', 'message': 'Session not found'}), 404
+    
+    transcript_path = session_dir / "transcript.txt"
+    
+    try:
+        with open(transcript_path, 'w', encoding='utf-8') as f:
+            f.write(data['content'])
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Transcript saved',
+            'path': str(transcript_path)
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/media/video/<session_id>/frames/<filename>')
+def serve_video_frame(session_id, filename):
+    """
+    Serve captured frame images for the scenario details page.
+    """
+    frames_dir = MEDIA_VIDEO_DIR / session_id / "frames"
+    
+    if not frames_dir.exists():
+        return jsonify({'status': 'error', 'message': 'Frames directory not found'}), 404
+    
+    # Secure the filename to prevent path traversal
+    safe_filename = secure_filename(filename)
+    
+    return send_from_directory(frames_dir, safe_filename)
 
 
 # ============================================================================
@@ -662,48 +894,6 @@ def video_capture_capabilities():
     from scenarios.video_capture import VideoCaptureHandler
     return jsonify(VideoCaptureHandler.get_capabilities())
 
-
-# ============================================================================
-# Frame Ingestion Endpoints (NEW - Extension-based frame capture)
-# ============================================================================
-
-@app.route('/api/ingest/frame', methods=['POST'])
-def ingest_frame():
-    """
-    Receive a video frame from the browser extension.
-    Request body: {
-        "frame_data": "data:image/jpeg;base64,...",
-        "frame_number": 1,
-        "video_time": 12.5,
-        "timestamp": 1234567890
-    }
-    
-    The frame is compared against the last saved frame using SSIM.
-    Frames with similarity > 60% are discarded to avoid duplicates.
-    """
-    data = request.get_json()
-    if not data or not data.get('frame_data'):
-        return jsonify({'status': 'error', 'message': 'frame_data required'}), 400
-    
-    handler = get_video_handler()
-    
-    # Check if we're in a capture session
-    if not handler.is_recording:
-        return jsonify({
-            'status': 'error',
-            'message': 'No active capture session',
-            'saved': False
-        }), 400
-    
-    # Ingest the frame
-    result = handler.ingest_frame(
-        frame_data=data['frame_data'],
-        frame_number=data.get('frame_number'),
-        video_time=data.get('video_time'),
-        timestamp=data.get('timestamp')
-    )
-    
-    return jsonify(result)
 
 
 @app.route('/api/current_session', methods=['GET'])

@@ -16,6 +16,9 @@ export interface Activity {
     };
     error?: string;
     uploaded?: boolean;
+    // For scenario-based activities
+    session_id?: string;
+    scenario?: 'VIDEO' | 'DOC' | 'WEB';
 }
 
 export interface Config {
@@ -120,6 +123,74 @@ export interface CurrentSessionResponse {
     transcript: string;
     frames_captured: number;
     audio_duration_seconds: number;
+}
+
+export interface TranscriberStatus {
+    streaming_enabled: boolean;
+    is_recording: boolean;
+    model_loading: boolean;
+    model_loaded: boolean;
+    device_type: 'cpu' | 'cuda';
+    current_transcript: string;
+    transcript_chunks: TranscriptChunk[];
+    audio_duration_seconds: number;
+    chunks_processed: number;
+    chunk_duration_seconds: number;
+    has_soundcard: boolean;
+    has_pyaudio: boolean;
+    has_whisper: boolean;
+    has_gpu: boolean;
+}
+
+export interface CaptureStatus {
+    is_recording: boolean;
+    session_id: string | null;
+    total_frames: number;
+    saved_frames: number;
+    capture_interval: number;
+    ssim_threshold: number;
+    ingested_frames: number;
+}
+
+export interface SessionDetails {
+    id: string;
+    type: string | null;
+    source_url: string | null;
+    title: string | null;
+    start_time: string | null;
+    end_time: string | null;
+}
+
+export interface SessionDetailsResponse {
+    session: SessionDetails;
+    is_active: boolean;
+    capture_status: CaptureStatus | null;
+    transcriber_status: TranscriberStatus | null;
+}
+
+export interface SessionFrame {
+    filename: string;
+    path: string;
+    size: number;
+    modified: number;
+    video_time: number | null;
+}
+
+export interface SessionFramesResponse {
+    frames: SessionFrame[];
+    count: number;
+}
+
+export interface TranscriptChunk {
+    time?: number;
+    timestamp?: string;
+    text: string;
+}
+
+export interface SessionTranscriptResponse {
+    content: string;
+    exists: boolean;
+    chunks: TranscriptChunk[];
 }
 
 class ApiService {
@@ -237,6 +308,33 @@ class ApiService {
 
     async getCurrentSession(): Promise<CurrentSessionResponse> {
         return this.request<CurrentSessionResponse>('/api/current_session');
+    }
+
+    // =========================================================================
+    // Session Details Methods (for Scenario Details Page)
+    // =========================================================================
+
+    async getSessionDetails(sessionId: string): Promise<SessionDetailsResponse> {
+        return this.request<SessionDetailsResponse>(`/api/session/${sessionId}`);
+    }
+
+    async getSessionFrames(sessionId: string): Promise<SessionFramesResponse> {
+        return this.request<SessionFramesResponse>(`/api/session/${sessionId}/frames`);
+    }
+
+    async getSessionTranscript(sessionId: string): Promise<SessionTranscriptResponse> {
+        return this.request<SessionTranscriptResponse>(`/api/session/${sessionId}/transcript`);
+    }
+
+    async updateSessionTranscript(sessionId: string, content: string): Promise<{ status: string; message?: string }> {
+        return this.request(`/api/session/${sessionId}/transcript`, {
+            method: 'PUT',
+            body: JSON.stringify({ content }),
+        });
+    }
+
+    getFrameUrl(sessionId: string, filename: string): string {
+        return `${this.baseUrl}/api/media/video/${sessionId}/frames/${filename}`;
     }
 }
 

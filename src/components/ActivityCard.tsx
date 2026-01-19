@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { api, Activity } from '../services/api';
 import {
     Monitor,
@@ -46,11 +47,23 @@ function formatTime(timestamp: string): string {
 }
 
 export default function ActivityCard({ activity }: ActivityCardProps) {
+    const navigate = useNavigate();
     const { icon: IconComponent, color } = getActivityIcon(activity.title);
     const screenshotUrl = activity.image_path ? api.getScreenshotUrl(activity.image_path) : null;
+    const hasSession = !!activity.session_id;
+
+    const handleClick = () => {
+        if (hasSession) {
+            navigate(`/scenario/${activity.session_id}`);
+        }
+    };
 
     return (
-        <div className="glass rounded-2xl overflow-hidden card-hover animate-slide-up">
+        <div
+            className={`glass rounded-2xl overflow-hidden card-hover animate-slide-up ${hasSession ? 'cursor-pointer hover:ring-2 hover:ring-purple-500/50' : ''
+                }`}
+            onClick={handleClick}
+        >
             {/* Header */}
             <div className="glass-light p-4 flex items-center gap-3">
                 <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center shadow-lg`}>

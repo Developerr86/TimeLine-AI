@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Play, Square, X, Video, FileText, Globe, Clock, ExternalLink, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -31,10 +32,12 @@ const scenarioColors = {
 };
 
 export default function ActivityList({ onProcess, onDismiss, showNotification }: ActivityListProps) {
+    const navigate = useNavigate();
     const [activities, setActivities] = useState<PendingActivity[]>([]);
     const [loading, setLoading] = useState(false);
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [stoppingId, setStoppingId] = useState<string | null>(null);
+    const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
     const fetchActivities = useCallback(async () => {
         try {
@@ -58,6 +61,10 @@ export default function ActivityList({ onProcess, onDismiss, showNotification }:
             const result = await api.processActivity(activity.id);
             if (result.status === 'processing') {
                 showNotification?.(`▶️ Started processing: ${activity.title}`, 'success');
+                // Store the session ID for navigation
+                if ((result as any).capture_session_id) {
+                    setActiveSessionId((result as any).capture_session_id);
+                }
                 onProcess?.(activity);
             } else {
                 showNotification?.(`❌ Failed to start processing`, 'error');
@@ -135,12 +142,18 @@ export default function ActivityList({ onProcess, onDismiss, showNotification }:
                     const Icon = scenarioIcons[activity.scenario] || Globe;
                     const gradientColor = scenarioColors[activity.scenario] || 'from-gray-500 to-gray-600';
                     const isProcessing = processingId === activity.id;
+                    const isClickable = activity.processing && activeSessionId;
 
                     return (
                         <div
                             key={activity.id}
                             className={`glass rounded-xl p-4 transition-all duration-200 ${activity.processing ? 'ring-2 ring-purple-500/50' : ''
-                                }`}
+                                } ${isClickable ? 'cursor-pointer hover:bg-white/5' : ''}`}
+                            onClick={() => {
+                                if (isClickable) {
+                                    navigate(`/scenario/${activeSessionId}`);
+                                }
+                            }}
                         >
                             <div className="flex items-start gap-3">
                                 {/* Icon */}

@@ -103,7 +103,7 @@ class StreamingTranscriber:
         self._audio_lock = threading.Lock()
         
         # Transcript buffer
-        self._transcript_parts: List[str] = []
+        self._transcript_parts: List[Dict[str, Any]] = []  # Now stores {time, text}
         self._transcript_lock = threading.Lock()
         self._full_transcript = ""
         
@@ -112,8 +112,18 @@ class StreamingTranscriber:
         self._total_audio_duration = 0.0
         self._whisper_model = None
         
-        # Output file for full audio
+        # Model loading state (for UI)
+        self._model_loading = False
+        self._model_loaded = False
+        self._device_type = "cpu"  # "cpu" or "cuda"
+        
+        # Language detection (auto-detect from first chunk)
+        self._detected_language: Optional[str] = None
+        self._language_detection_done = False
+        
+        # Output files
         self._audio_file_path: Optional[Path] = None
+        self._transcript_file_path: Optional[Path] = None
         self._all_audio_data: List[np.ndarray] = []
     
     @property
@@ -185,8 +195,18 @@ class StreamingTranscriber:
         self._total_audio_duration = 0.0
         self._all_audio_data.clear()
         
+        # Reset model and language detection states
+        self._model_loading = False
+        self._model_loaded = False
+        self._detected_language = None
+        self._language_detection_done = False
+        self._device_type = "cuda" if HAS_GPU else "cpu"
+        
+        # Output files
         self._audio_file_path = output_dir / "audio.wav"
+        self._transcript_file_path = output_dir / "transcript.txt"
         print(f"📁 Audio will be saved to: {self._audio_file_path}")
+        print(f"📁 Transcript will be saved to: {self._transcript_file_path}")
         
         # Start recording thread
         print("🚀 Starting audio recording thread...")
@@ -390,19 +410,34 @@ class StreamingTranscriber:
     def _transcribe_loop(self):
         """Process audio chunks and transcribe."""
         if not HAS_WHISPER:
+            print("⚠️ Whisper not available - skipping transcription")
             return
+        
+        # Track model loading state
+        self._model_loading = True
+        self._device_type = "cuda" if HAS_GPU else "cpu"
         
         # Load Whisper model
         device = "cuda" if HAS_GPU else "cpu"
         compute_type = "float16" if HAS_GPU else "int8"
         
         print(f"📦 Loading Whisper '{self.model_size}' model (device: {device})...")
-        self._whisper_model = WhisperModel(
-            self.model_size, 
-            device=device, 
-            compute_type=compute_type
-        )
-        print("✅ Whisper model loaded")
+        print(f"   This may take a moment...")
+        
+        try:
+            self._whisper_model = WhisperModel(
+                self.model_size, 
+                device=device, 
+                compute_type=compute_type
+            )
+            self._model_loading = False
+            self._model_loaded = True
+            print("✅ Whisper model loaded successfully!")
+            print("🎙️ Ready to transcribe audio...")
+        except Exception as e:
+            self._model_loading = False
+            print(f"❌ Failed to load Whisper model: {e}")
+            return
         
         while not self._stop_event.is_set():
             # Check for audio chunks to transcribe
@@ -417,14 +452,28 @@ class StreamingTranscriber:
                 time.sleep(0.5)
     
     def _transcribe_chunk(self, audio_data: np.ndarray):
-        """Transcribe a single audio chunk."""
+        """Transcribe a single audio chunk and save to .txt file."""
         try:
-            segments, _ = self._whisper_model.transcribe(
-                audio_data,
-                beam_size=1,  # Fast, single beam
-                vad_filter=True,  # Voice activity detection
-                language="en"  # Set to None for auto-detect
-            )
+            # Auto-detect language from first chunk, then use detected language
+            if not self._language_detection_done:
+                # First chunk: auto-detect language
+                segments, info = self._whisper_model.transcribe(
+                    audio_data,
+                    beam_size=1,
+                    vad_filter=True,
+                    language=None  # Auto-detect
+                )
+                self._detected_language = info.language
+                self._language_detection_done = True
+                print(f"  🌐 Detected language: {self._detected_language}")
+            else:
+                # Subsequent chunks: use detected language
+                segments, _ = self._whisper_model.transcribe(
+                    audio_data,
+                    beam_size=1,
+                    vad_filter=True,
+                    language=self._detected_language
+                )
             
             text_parts = []
             for segment in segments:
@@ -433,12 +482,33 @@ class StreamingTranscriber:
             chunk_text = " ".join(text_parts)
             
             if chunk_text:
+                # Calculate timestamp for this chunk
+                chunk_time = self._chunks_processed * self.chunk_duration
+                minutes = int(chunk_time // 60)
+                seconds = int(chunk_time % 60)
+                timestamp = f"[{minutes:02d}:{seconds:02d}]"
+                
                 with self._transcript_lock:
-                    self._transcript_parts.append(chunk_text)
-                    self._full_transcript = " ".join(self._transcript_parts)
+                    # Store as dict with time and text
+                    self._transcript_parts.append({
+                        "time": chunk_time,
+                        "timestamp": timestamp,
+                        "text": chunk_text
+                    })
+                    # Build full transcript (just text)
+                    self._full_transcript = " ".join([p["text"] for p in self._transcript_parts])
                 
                 self._chunks_processed += 1
-                print(f"  📝 Chunk {self._chunks_processed}: \"{chunk_text[:50]}...\"")
+                
+                # Append to .txt file in real-time
+                if self._transcript_file_path:
+                    try:
+                        with open(self._transcript_file_path, 'a', encoding='utf-8') as f:
+                            f.write(f"{timestamp} {chunk_text}\n")
+                    except Exception as e:
+                        print(f"⚠️ Failed to write transcript chunk: {e}")
+                
+                print(f"  📝 Chunk {self._chunks_processed} {timestamp}: \"{chunk_text[:50]}...\"")
             
         except Exception as e:
             print(f"⚠️ Transcription error: {e}")
@@ -480,11 +550,18 @@ class StreamingTranscriber:
             print(f"⚠️ Failed to save audio: {e}")
     
     def get_status(self) -> Dict[str, Any]:
-        """Get current transcriber status."""
+        """Get current transcriber status including model loading state."""
+        with self._transcript_lock:
+            transcript_chunks = list(self._transcript_parts)
+        
         return {
             "streaming_enabled": True,
             "is_recording": self._is_recording,
+            "model_loading": self._model_loading,
+            "model_loaded": self._model_loaded,
+            "device_type": self._device_type,
             "current_transcript": self.current_transcript,
+            "transcript_chunks": transcript_chunks,  # List of {time, timestamp, text}
             "audio_duration_seconds": self._total_audio_duration,
             "chunks_processed": self._chunks_processed,
             "chunk_duration_seconds": self.chunk_duration,
@@ -595,16 +672,17 @@ class VideoCaptureHandler:
                 audio_path = self._session_dir / "audio.wav"
                 self.media_listener.start_recording(str(audio_path))
             
-            # Start capture thread
+            # Note: Frame capture is now handled by the browser extension
+            # via /api/ingest/frame endpoint, not by system screenshot loop.
+            # The extension captures actual video frames from the <video> element.
             self._stop_event.clear()
             self._is_recording = True
-            self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
-            self._capture_thread.start()
             
             result["success"] = True
             result["frames_dir"] = str(self._frames_dir)
             result["streaming_transcription"] = self._transcriber.is_recording if self._transcriber else False
             print(f"▶️ Video capture started: {session_id}")
+            print(f"   📷 Waiting for frames from browser extension...")
             
         except Exception as e:
             result["errors"].append(f"Failed to start: {str(e)}")
@@ -870,32 +948,42 @@ class VideoCaptureHandler:
             # Convert to grayscale for SSIM comparison
             frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
-            # Check similarity with last frame (60% threshold for extension frames)
-            extension_ssim_threshold = 0.6  # 60% similarity threshold
+            # Use dedicated variable for ingested frames (separate from system screenshot loop)
+            if not hasattr(self, '_last_ingested_frame'):
+                self._last_ingested_frame = None
+            
+            # Check similarity with last ingested frame
+            # Threshold: 0.6 means we ONLY save if similarity is LESS than 60%
+            # (i.e., frames must be at least 40% different)
+            extension_ssim_threshold = 0.6
             should_save = True
             
-            if self._last_frame is not None and HAS_SKIMAGE:
-                # Resize if needed for comparison
-                if frame_gray.shape != self._last_frame.shape:
-                    self._last_frame = cv2.resize(
-                        self._last_frame, 
+            if self._last_ingested_frame is not None and HAS_SKIMAGE:
+                # Resize for comparison if dimensions differ
+                compare_frame = self._last_ingested_frame
+                if frame_gray.shape != compare_frame.shape:
+                    compare_frame = cv2.resize(
+                        compare_frame, 
                         (frame_gray.shape[1], frame_gray.shape[0])
                     )
                 
-                similarity, _ = ssim(frame_gray, self._last_frame, full=True)
+                similarity, _ = ssim(frame_gray, compare_frame, full=True)
                 result["similarity"] = float(similarity)
                 
-                # Save if similarity is LESS than threshold (frames are different enough)
+                # Save only if similarity is LESS than threshold (frames are different enough)
                 should_save = similarity < extension_ssim_threshold
                 
-                if not should_save:
-                    print(f"  📷 Ingested frame {self._ingested_frame_count}: skipped (similarity: {similarity:.2%})")
+                if should_save:
+                    print(f"  📷 Frame {self._ingested_frame_count}: SAVED (similarity: {similarity:.1%} < {extension_ssim_threshold:.0%})")
+                else:
+                    print(f"  📷 Frame {self._ingested_frame_count}: skipped (similarity: {similarity:.1%} >= {extension_ssim_threshold:.0%})")
+            else:
+                print(f"  📷 Frame {self._ingested_frame_count}: SAVED (first frame or no SSIM)")
             
             if should_save:
                 self._save_ingested_frame(frame, video_time)
-                self._last_frame = frame_gray
+                self._last_ingested_frame = frame_gray.copy()  # Store copy for next comparison
                 result["saved"] = True
-                print(f"  📷 Ingested frame {self._ingested_frame_count}: saved")
             
         except Exception as e:
             result["errors"].append(f"Frame ingestion error: {str(e)}")
