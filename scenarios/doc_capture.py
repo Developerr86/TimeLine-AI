@@ -5,9 +5,12 @@ Handles PDF text extraction and OCR for images/scanned documents.
 
 import os
 import shutil
+import tempfile
+import requests
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
+from urllib.parse import urlparse, unquote
 import hashlib
 
 try:
@@ -165,6 +168,152 @@ class DocCaptureHandler:
             result["errors"].append(f"Processing failed: {str(e)}")
         
         return result
+    
+    def process_activity(self, url: str, session_id: str) -> Dict[str, Any]:
+        """
+        Process a document activity from a URL (web or local file).
+        Downloads web PDFs or accesses local files, then extracts text.
+        
+        Args:
+            url: The document URL (http/https or file://)
+            session_id: The capture session ID
+            
+        Returns:
+            Dict with status and extracted content info
+        """
+        result = {
+            "success": False,
+            "session_id": session_id,
+            "url": url,
+            "method": None,
+            "text_length": 0,
+            "errors": []
+        }
+        
+        temp_file = None
+        local_path = None
+        
+        try:
+            # Case A: Web URL - download the file
+            if url.startswith('http://') or url.startswith('https://'):
+                print(f"📥 Downloading document from: {url}")
+                try:
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    }
+                    response = requests.get(url, headers=headers, timeout=30, stream=True)
+                    response.raise_for_status()
+                    
+                    # Determine file extension from URL or content-type
+                    parsed_url = urlparse(url)
+                    url_path = unquote(parsed_url.path)
+                    ext = Path(url_path).suffix.lower() or '.pdf'
+                    
+                    # Create temp file
+                    temp_file = tempfile.NamedTemporaryFile(
+                        delete=False, 
+                        suffix=ext,
+                        prefix='timeline_doc_'
+                    )
+                    for chunk in response.iter_content(chunk_size=8192):
+                        temp_file.write(chunk)
+                    temp_file.close()
+                    
+                    local_path = temp_file.name
+                    result["method"] = "download"
+                    print(f"  ✅ Downloaded to: {local_path}")
+                    
+                except requests.exceptions.HTTPError as e:
+                    result["errors"].append(f"HTTP error {e.response.status_code}: {str(e)}")
+                    print(f"  ❌ Download failed: HTTP {e.response.status_code}")
+                    return result
+                except requests.exceptions.RequestException as e:
+                    result["errors"].append(f"Download failed: {str(e)}")
+                    print(f"  ❌ Download failed: {str(e)}")
+                    return result
+            
+            # Case B: Local file URL (file://)
+            elif url.startswith('file://'):
+                print(f"📁 Accessing local file: {url}")
+                # Parse file:// URL
+                parsed = urlparse(url)
+                # Handle Windows paths: file:///C:/path/to/file.pdf
+                file_path = unquote(parsed.path)
+                # On Windows, remove leading slash from /C:/path
+                if len(file_path) > 2 and file_path[0] == '/' and file_path[2] == ':':
+                    file_path = file_path[1:]
+                
+                if not Path(file_path).exists():
+                    result["errors"].append(f"File not found: {file_path}")
+                    print(f"  ❌ File not found: {file_path}")
+                    return result
+                
+                local_path = file_path
+                result["method"] = "local"
+                print(f"  ✅ Found local file: {local_path}")
+            
+            else:
+                result["errors"].append(f"Unsupported URL scheme: {url}")
+                return result
+            
+            # Now process the file using the existing capture method
+            original_filename = Path(url).name if '/' in url else 'document.pdf'
+            capture_result = self.capture(local_path, session_id, original_filename)
+            
+            # Merge capture result into our result
+            result["success"] = capture_result.get("success", False)
+            result["text_length"] = capture_result.get("text_length", 0)
+            result["page_count"] = capture_result.get("page_count", 0)
+            result["extraction_method"] = capture_result.get("method")
+            
+            if capture_result.get("errors"):
+                result["errors"].extend(capture_result["errors"])
+            
+            # Also save to transcript.txt for frontend compatibility
+            if result["success"] and result["text_length"] > 0:
+                self._save_transcript(session_id, capture_result)
+            
+        except Exception as e:
+            result["errors"].append(f"Processing failed: {str(e)}")
+            print(f"❌ Processing failed: {str(e)}")
+        
+        finally:
+            # Clean up temp file if we downloaded it
+            if temp_file and Path(temp_file.name).exists():
+                try:
+                    os.unlink(temp_file.name)
+                    print(f"  🧹 Cleaned up temp file")
+                except Exception as e:
+                    print(f"  ⚠️ Failed to clean up temp file: {e}")
+        
+        return result
+    
+    def _save_transcript(self, session_id: str, capture_result: Dict[str, Any]):
+        """Save extracted text to transcript.txt for frontend compatibility."""
+        try:
+            # Get the session directory from the stored path
+            stored_path = capture_result.get("stored_path")
+            if stored_path:
+                session_dir = Path(stored_path).parent
+            else:
+                session_dir = MEDIA_DOCS_DIR / session_id
+            
+            session_dir.mkdir(parents=True, exist_ok=True)
+            transcript_path = session_dir / "transcript.txt"
+            
+            # Read extracted text from database
+            db = get_db()
+            try:
+                from models import CapturedText
+                text_record = db.query(CapturedText).filter_by(session_id=session_id).first()
+                if text_record and text_record.content:
+                    with open(transcript_path, 'w', encoding='utf-8') as f:
+                        f.write(text_record.content)
+                    print(f"  📝 Saved transcript to: {transcript_path}")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"  ⚠️ Failed to save transcript: {e}")
     
     def _process_pdf(self, file_path: Path) -> tuple[str, int, str]:
         """

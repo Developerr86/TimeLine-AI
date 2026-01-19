@@ -124,6 +124,10 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
 
     const { transcriber_status } = session;
     const isActive = session.is_active;
+    const sessionType = session.session.type;
+    const isDocSession = sessionType === 'DOC';
+    const isWebSession = sessionType === 'WEB';
+    const isVideoSession = sessionType === 'VIDEO';
     const modelLoading = transcriber_status?.model_loading || false;
     const modelLoaded = transcriber_status?.model_loaded || false;
     const deviceType = transcriber_status?.device_type || 'cpu';
@@ -153,7 +157,7 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
                 </div>
 
                 {/* Status Badge */}
-                {isActive && (
+                {isActive && isVideoSession && (
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/20 text-green-400">
                         <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                         Recording
@@ -162,7 +166,7 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
             </div>
 
             {/* Model Loading Status */}
-            {isActive && (
+            {isActive && isVideoSession && (
                 <div className="glass rounded-xl p-4 mb-6">
                     <div className="flex items-center gap-4">
                         {modelLoading ? (
@@ -216,8 +220,8 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
                 <button
                     onClick={() => setActiveTab('transcript')}
                     className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'transcript'
-                            ? 'bg-purple-500/20 text-purple-400'
-                            : 'glass text-gray-400 hover:text-white'
+                        ? 'bg-purple-500/20 text-purple-400'
+                        : 'glass text-gray-400 hover:text-white'
                         }`}
                 >
                     <FileText className="w-4 h-4" />
@@ -228,21 +232,24 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
                         </span>
                     )}
                 </button>
-                <button
-                    onClick={() => setActiveTab('frames')}
-                    className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'frames'
+                {/* Only show Frames tab for VIDEO sessions */}
+                {isVideoSession && (
+                    <button
+                        onClick={() => setActiveTab('frames')}
+                        className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'frames'
                             ? 'bg-purple-500/20 text-purple-400'
                             : 'glass text-gray-400 hover:text-white'
-                        }`}
-                >
-                    <Image className="w-4 h-4" />
-                    Frames
-                    {frames.length > 0 && (
-                        <span className="px-2 py-0.5 bg-purple-500/30 rounded-full text-xs">
-                            {frames.length}
-                        </span>
-                    )}
-                </button>
+                            }`}
+                    >
+                        <Image className="w-4 h-4" />
+                        Frames
+                        {frames.length > 0 && (
+                            <span className="px-2 py-0.5 bg-purple-500/30 rounded-full text-xs">
+                                {frames.length}
+                            </span>
+                        )}
+                    </button>
+                )}
             </div>
 
             {/* Content */}

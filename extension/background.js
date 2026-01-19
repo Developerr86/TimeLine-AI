@@ -10,6 +10,7 @@
 const CONFIG = {
     BACKEND_URL: 'http://localhost:5000/api/heartbeat',
     FRAME_INGEST_URL: 'http://localhost:5000/api/ingest/frame',
+    WEB_INGEST_URL: 'http://localhost:5000/api/ingest/web',
     POLL_INTERVAL_MS: 3000,
     IDLE_DETECTION_SECONDS: 60
 };
@@ -89,6 +90,7 @@ const SCENARIO_PATTERNS = {
 let isEnabled = true;
 let lastScenario = null;
 let lastUrl = null;
+let lastWebCapturedUrl = null;  // Track last captured WEB URL to prevent duplicates
 let pollIntervalId = null;
 
 /**
@@ -272,6 +274,58 @@ async function sendFrameToBackend(frameData) {
 }
 
 /**
+ * Capture web page HTML snapshot and send to backend
+ * @param {number} tabId - The tab ID to capture from
+ * @param {string} url - The page URL
+ * @param {string} title - The page title
+ */
+async function captureWebSnapshot(tabId, url, title) {
+    try {
+        console.log('[TimeLine] Capturing WEB snapshot for:', url);
+
+        // Request page content from content script
+        chrome.tabs.sendMessage(tabId, { type: 'GET_PAGE_CONTENT' }, async (response) => {
+            if (chrome.runtime.lastError) {
+                console.warn('[TimeLine] Could not get page content:', chrome.runtime.lastError.message);
+                return;
+            }
+
+            if (!response || !response.success || !response.html) {
+                console.warn('[TimeLine] Invalid page content response');
+                return;
+            }
+
+            // Send to backend
+            try {
+                const backendResponse = await fetch(CONFIG.WEB_INGEST_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        url: response.url || url,
+                        title: response.title || title,
+                        html_content: response.html
+                    })
+                });
+
+                if (!backendResponse.ok) {
+                    console.warn('[TimeLine] WEB snapshot upload failed:', backendResponse.status);
+                    return;
+                }
+
+                const result = await backendResponse.json();
+                console.log('[TimeLine] 📸 WEB snapshot captured:', result.snapshot_path || 'saved');
+            } catch (error) {
+                console.debug('[TimeLine] WEB snapshot upload error:', error.message);
+            }
+        });
+    } catch (error) {
+        console.error('[TimeLine] Error capturing WEB snapshot:', error);
+    }
+}
+
+/**
  * Query active tab and send heartbeat
  */
 async function pollActiveTab() {
@@ -311,6 +365,20 @@ async function pollActiveTab() {
 
         // Detect scenario
         const scenario = detectScenario(url);
+
+        // Track scenario consistency
+        if (scenario === lastScenario) {
+            this._scenario_streak++;
+        } else {
+            this._scenario_streak = 1;
+            lastScenario = scenario;
+        }
+
+        // Capture WEB snapshot once per page load (only when URL changes)
+        if (scenario === 'WEB' && url !== lastWebCapturedUrl) {
+            captureWebSnapshot(tabs[0].id, url, title);
+            lastWebCapturedUrl = url;
+        }
 
         // Only send if URL or scenario changed (or periodically for VIDEO)
         const hasChanged = url !== lastUrl || scenario !== lastScenario;

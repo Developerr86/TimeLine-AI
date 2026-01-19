@@ -122,6 +122,11 @@ class WebCaptureHandler:
                 
                 db.commit()
                 result["success"] = True
+                
+                # Save to transcript.txt for frontend compatibility
+                if main_text:
+                    self._save_transcript(session_id, main_text)
+                
                 print(f"✅ Web capture complete: {len(main_text)} chars, {len(downloaded_images)} images")
                 
             except Exception as e:
@@ -136,6 +141,133 @@ class WebCaptureHandler:
             result["errors"].append(f"Capture failed: {str(e)}")
         
         return result
+    
+    def process_snapshot(self, snapshot_path: str, session_id: str, url: str = None) -> Dict[str, Any]:
+        """
+        Process a saved HTML snapshot instead of fetching from network.
+        
+        Args:
+            snapshot_path: Path to the saved HTML file
+            session_id: The capture session ID
+            url: Original URL (for metadata)
+            
+        Returns:
+            Dict with status, captured content info, and any errors
+        """
+        result = {
+            "success": False,
+            "session_id": session_id,
+            "url": url,
+            "title": None,
+            "text_length": 0,
+            "images_downloaded": 0,
+            "method": "snapshot",
+            "errors": []
+        }
+        
+        snapshot_path = Path(snapshot_path)
+        
+        if not snapshot_path.exists():
+            result["errors"].append(f"Snapshot file not found: {snapshot_path}")
+            return result
+        
+        try:
+            # Read HTML from snapshot
+            print(f"📖 Reading snapshot: {snapshot_path}")
+            with open(snapshot_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            
+            # Extract main content (same as capture method)
+            title, main_text = self._extract_content(html_content, url or '')
+            result["title"] = title or "Untitled"
+            
+            if not main_text:
+                result["errors"].append("Could not extract main content from snapshot")
+                main_text = ""
+            
+            result["text_length"] = len(main_text)
+            
+            # Extract and download images (optional, might skip for offline)
+            if url:
+                image_urls = self._extract_image_urls(html_content, url)
+                downloaded_images = self._download_images(image_urls, session_id)
+                result["images_downloaded"] = len(downloaded_images)
+            else:
+                downloaded_images = []
+            
+            # Store in database
+            db = get_db()
+            try:
+                # Update session with title and URL
+                session = db.query(CaptureSession).filter_by(id=session_id).first()
+                if session:
+                    session.title = title
+                    if url:
+                        session.source_url = url
+                
+                # Store extracted text
+                if main_text:
+                    text_record = CapturedText(
+                        session_id=session_id,
+                        content=main_text,
+                        source_url_or_path=url or str(snapshot_path),
+                        content_type="article"
+                    )
+                    db.add(text_record)
+                
+                # Store image records
+                for img_path, img_url in downloaded_images:
+                    media_record = CapturedMedia(
+                        session_id=session_id,
+                        file_path=str(img_path),
+                        media_type=MediaType.IMAGE,
+                        original_url=img_url
+                    )
+                    db.add(media_record)
+                
+                # Move snapshot to permanent session folder
+                session_dir = MEDIA_WEB_DIR / session_id
+                session_dir.mkdir(parents=True, exist_ok=True)
+                permanent_snapshot = session_dir / "snapshot.html"
+                
+                import shutil
+                shutil.move(str(snapshot_path), str(permanent_snapshot))
+                print(f"  💾 Moved snapshot to: {permanent_snapshot}")
+                
+                db.commit()
+                result["success"] = True
+                result["snapshot_moved"] = str(permanent_snapshot)
+                
+                # Save to transcript.txt for frontend compatibility
+                self._save_transcript(session_id, main_text, session_dir)
+                
+                print(f"✅ Web snapshot processed: {len(main_text)} chars, {len(downloaded_images)} images")
+                
+            except Exception as e:
+                db.rollback()
+                result["errors"].append(f"Database error: {str(e)}")
+            finally:
+                db.close()
+                
+        except Exception as e:
+            result["errors"].append(f"Snapshot processing failed: {str(e)}")
+            print(f"❌ Snapshot processing failed: {e}")
+        
+        return result
+    
+    def _save_transcript(self, session_id: str, text: str, session_dir: Path = None):
+        """Save extracted text to transcript.txt for frontend compatibility."""
+        try:
+            if session_dir is None:
+                session_dir = MEDIA_WEB_DIR / session_id
+            session_dir.mkdir(parents=True, exist_ok=True)
+            
+            transcript_path = session_dir / "transcript.txt"
+            with open(transcript_path, 'w', encoding='utf-8') as f:
+                f.write(text)
+            print(f"  📝 Saved transcript to: {transcript_path}")
+        except Exception as e:
+            print(f"  ⚠️ Failed to save transcript: {e}")
     
     def _extract_content(self, html: str, url: str) -> tuple[Optional[str], Optional[str]]:
         """Extract title and main text content from HTML."""

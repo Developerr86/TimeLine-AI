@@ -30,6 +30,7 @@ class PendingActivity:
     detected_at: datetime = field(default_factory=datetime.utcnow)
     processed: bool = False
     processing: bool = False
+    metadata: Dict[str, Any] = field(default_factory=dict)  # Store snapshot_path, etc.
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -39,7 +40,8 @@ class PendingActivity:
             "title": self.title,
             "detected_at": self.detected_at.isoformat(),
             "processed": self.processed,
-            "processing": self.processing
+            "processing": self.processing,
+            "metadata": self.metadata
         }
 
 
@@ -314,6 +316,34 @@ class Orchestrator:
                 if activity.id == activity_id:
                     return activity
         return None
+    
+    def get_activity_by_url(self, url: str, scenario: str = None) -> Optional[PendingActivity]:
+        """Get a specific activity by URL (and optionally scenario)."""
+        with self._lock:
+            for activity in self._pending_activities:
+                if activity.url == url:
+                    if scenario is None or activity.scenario == scenario:
+                        return activity
+        return None
+    
+    def update_activity_metadata(self, activity_id: str, metadata: Dict[str, Any]) -> bool:
+        """
+        Update metadata for an existing activity.
+        
+        Args:
+            activity_id: The activity ID to update
+            metadata: Dict of metadata to merge
+            
+        Returns:
+            True if activity was found and updated
+        """
+        with self._lock:
+            for activity in self._pending_activities:
+                if activity.id == activity_id:
+                    activity.metadata.update(metadata)
+                    print(f"📎 Updated activity metadata: {activity_id[:8]}... -> {list(metadata.keys())}")
+                    return True
+        return False
     
     def start_activity_processing(self, activity_id: str) -> Dict[str, Any]:
         """

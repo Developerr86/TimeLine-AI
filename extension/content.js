@@ -205,6 +205,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse({ pong: true, url: window.location.href });
             break;
 
+        case 'GET_PAGE_CONTENT':
+            // Return full page HTML for web article snapshot
+            console.log('[TimeLine Content] Capturing page HTML...');
+            sendResponse({
+                success: true,
+                html: document.documentElement.outerHTML,
+                url: window.location.href,
+                title: document.title
+            });
+            break;
+
         default:
             sendResponse({ error: 'Unknown message type' });
     }

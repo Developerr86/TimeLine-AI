@@ -207,6 +207,71 @@ def ingest_frame():
     return jsonify(result)
 
 
+@app.route('/api/ingest/web', methods=['POST'])
+def ingest_web():
+    """
+    Receive HTML snapshot from browser extension for web articles.
+    Request body: {
+        "url": "https://...",
+        "title": "Article Title",
+        "html_content": "<html>...</html>"
+    }
+    
+    Saves the HTML to a temp file and attaches the path to the pending activity.
+    """
+    data = request.get_json()
+    if not data or not data.get('html_content'):
+        return jsonify({'status': 'error', 'message': 'No HTML content provided'}), 400
+    
+    url = data.get('url', '')
+    title = data.get('title', 'Untitled')
+    html_content = data.get('html_content', '')
+    
+    # Create temp directory if needed
+    temp_dir = Path('media/temp')
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate filename from URL hash
+    import hashlib
+    url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+    timestamp = int(datetime.now().timestamp())
+    filename = f"web_{url_hash}_{timestamp}.html"
+    snapshot_path = temp_dir / filename
+    
+    try:
+        # Save HTML content
+        with open(snapshot_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        print(f"📸 Saved WEB snapshot: {snapshot_path} ({len(html_content)} bytes)")
+        
+        # Find or wait for the pending activity to attach metadata
+        orch = get_orchestrator()
+        activity = orch.get_activity_by_url(url, 'WEB')
+        
+        if activity:
+            # Update activity with snapshot path
+            orch.update_activity_metadata(activity.id, {
+                'snapshot_path': str(snapshot_path),
+                'snapshot_size': len(html_content)
+            })
+        else:
+            # Activity might not exist yet (heartbeat arrives after snapshot)
+            # Store in a temp mapping that can be checked when activity is created
+            print(f"  ⏳ No pending activity found for {url[:50]}... (will attach later)")
+        
+        return jsonify({
+            'status': 'success',
+            'snapshot_path': str(snapshot_path),
+            'size': len(html_content),
+            'activity_found': activity is not None
+        })
+        
+    except Exception as e:
+        print(f"❌ Failed to save WEB snapshot: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 # ============================================================================
 # Activity Queue Endpoints (NEW - "Process Later" Workflow)
 # ============================================================================
@@ -288,6 +353,126 @@ def process_activity():
         except Exception as e:
             db.rollback()
             print(f"❌ Failed to create capture session: {e}")
+            result['capture_errors'] = [str(e)]
+        finally:
+            db.close()
+    
+    # For DOC activities, start the document capture handler
+    elif activity and activity.scenario == 'DOC':
+        import uuid
+        import threading
+        from models import CaptureSession, SessionType
+        
+        # Create a new capture session in the database
+        db = get_db()
+        try:
+            session_id = str(uuid.uuid4())
+            session = CaptureSession(
+                id=session_id,
+                type=SessionType.DOC,
+                source_url=activity.url,
+                title=activity.title
+            )
+            db.add(session)
+            db.commit()
+            print(f"📄 Created document capture session: {session_id}")
+            
+            # Run document processing in background thread (OCR can be slow)
+            def process_doc_async():
+                try:
+                    handler = DocCaptureHandler()
+                    doc_result = handler.process_activity(activity.url, session_id)
+                    if doc_result.get('success'):
+                        print(f"✅ Document processed: {doc_result.get('text_length', 0)} chars extracted")
+                        # Update session end time
+                        db = get_db()
+                        try:
+                            session = db.query(CaptureSession).filter_by(id=session_id).first()
+                            if session:
+                                session.end_time = datetime.utcnow()
+                                db.commit()
+                        finally:
+                            db.close()
+                    else:
+                        print(f"⚠️ Document processing had errors: {doc_result.get('errors')}")
+                except Exception as e:
+                    print(f"❌ Document processing failed: {e}")
+            
+            thread = threading.Thread(target=process_doc_async, daemon=True)
+            thread.start()
+            
+            result['capture_session_id'] = session_id
+            print(f"🔄 Document processing started in background")
+            
+        except Exception as e:
+            db.rollback()
+            print(f"❌ Failed to create document session: {e}")
+            result['capture_errors'] = [str(e)]
+        finally:
+            db.close()
+    
+    # For WEB activities, start the web capture handler
+    elif activity and activity.scenario == 'WEB':
+        import uuid
+        import threading
+        from models import CaptureSession, SessionType
+        
+        # Create a new capture session in the database
+        db = get_db()
+        try:
+            session_id = str(uuid.uuid4())
+            session = CaptureSession(
+                id=session_id,
+                type=SessionType.WEB,
+                source_url=activity.url,
+                title=activity.title
+            )
+            db.add(session)
+            db.commit()
+            print(f"🌐 Created web capture session: {session_id}")
+            
+            # Get snapshot path from activity metadata (if available)
+            snapshot_path = activity.metadata.get('snapshot_path') if activity.metadata else None
+            
+            # Run web processing in background thread
+            def process_web_async():
+                try:
+                    handler = WebCaptureHandler()
+                    
+                    if snapshot_path and Path(snapshot_path).exists():
+                        # Process from saved snapshot (offline)
+                        print(f"📸 Processing from snapshot: {snapshot_path}")
+                        web_result = handler.process_snapshot(snapshot_path, session_id, activity.url)
+                    else:
+                        # Fallback: fetch from URL (online)
+                        print(f"🌐 No snapshot found, fetching from URL...")
+                        web_result = handler.capture(activity.url, session_id)
+                    
+                    if web_result.get('success'):
+                        print(f"✅ Web article processed: {web_result.get('text_length', 0)} chars extracted")
+                        # Update session end time
+                        db = get_db()
+                        try:
+                            session = db.query(CaptureSession).filter_by(id=session_id).first()
+                            if session:
+                                session.end_time = datetime.utcnow()
+                                db.commit()
+                        finally:
+                            db.close()
+                    else:
+                        print(f"⚠️ Web processing had errors: {web_result.get('errors')}")
+                except Exception as e:
+                    print(f"❌ Web processing failed: {e}")
+            
+            thread = threading.Thread(target=process_web_async, daemon=True)
+            thread.start()
+            
+            result['capture_session_id'] = session_id
+            print(f"🔄 Web processing started in background")
+            
+        except Exception as e:
+            db.rollback()
+            print(f"❌ Failed to create web session: {e}")
             result['capture_errors'] = [str(e)]
         finally:
             db.close()
@@ -457,10 +642,22 @@ def get_session_frames(session_id):
 def get_session_transcript(session_id):
     """
     Read the transcript.txt file for a session.
+    Supports VIDEO (media/video), DOC (media/docs), and WEB (media/web) sessions.
     """
-    from models import MEDIA_VIDEO_DIR
+    from models import MEDIA_VIDEO_DIR, MEDIA_DOCS_DIR, MEDIA_WEB_DIR, CaptureSession, SessionType
     
-    transcript_path = MEDIA_VIDEO_DIR / session_id / "transcript.txt"
+    # First, determine session type from database
+    db = get_db()
+    try:
+        session = db.query(CaptureSession).filter_by(id=session_id).first()
+        if session and session.type == SessionType.DOC:
+            transcript_path = MEDIA_DOCS_DIR / session_id / "transcript.txt"
+        elif session and session.type == SessionType.WEB:
+            transcript_path = MEDIA_WEB_DIR / session_id / "transcript.txt"
+        else:
+            transcript_path = MEDIA_VIDEO_DIR / session_id / "transcript.txt"
+    finally:
+        db.close()
     
     if not transcript_path.exists():
         return jsonify({
