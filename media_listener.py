@@ -34,6 +34,24 @@ except ImportError:
 try:
     import numpy as np
     HAS_NUMPY = True
+    
+    # Monkeypatch numpy.fromstring to fix compability with soundcard < 0.4.2 and numpy >= 1.20
+    try:
+        if not hasattr(np, '_is_patched_for_soundcard'):
+            _original_fromstring = np.fromstring
+            
+            def _patched_fromstring(string, dtype=float, count=-1, sep=''):
+                if sep == '':
+                    # Binary mode - use frombuffer
+                    return np.frombuffer(string, dtype=dtype, count=count)
+                return _original_fromstring(string, dtype=dtype, count=count, sep=sep)
+                
+            np.fromstring = _patched_fromstring
+            np._is_patched_for_soundcard = True
+            print("🔧 Applied monkeypatch for numpy.fromstring (soundcard compatibility in media_listener)")
+    except Exception as e:
+        print(f"⚠️ Failed to patch numpy in media_listener: {e}")
+
 except ImportError:
     HAS_NUMPY = False
 
@@ -236,16 +254,41 @@ class MediaListener:
     def _recording_loop(self):
         """Main audio recording loop."""
         try:
-            # Get default loopback device
-            loopback = sc.get_microphone(id=str(sc.default_speaker().name), include_loopback=True)
+            # Search for 'Stereo Mix' device first
+            preferred_mic = None
+            print("🔍 Searching for 'Stereo Mix' audio device (media listener)...")
             
-            if loopback is None:
-                print("❌ Could not find loopback device")
+            try:
+                # Get all microphones including loopback
+                all_mics = sc.all_microphones(include_loopback=True)
+                for mic in all_mics:
+                    if "stereo mix" in mic.name.lower():
+                        preferred_mic = mic
+                        print(f"✅ Found preferred device: {mic.name}")
+                        break
+            except Exception as e:
+                print(f"⚠️ Error searching for mics: {e}")
+            
+            if preferred_mic:
+                recorder_context = preferred_mic.recorder(samplerate=self.sample_rate, channels=self.channels)
+                source_name = preferred_mic.name
+            else:
+                # Fallback to default loopback
+                default_speaker = sc.default_speaker()
+                print(f"⚠️ 'Stereo Mix' not found. Falling back to default loopback: {default_speaker.name}")
+                recorder_context = sc.get_microphone(
+                    id=str(default_speaker.name),
+                    include_loopback=True
+                ).recorder(samplerate=self.sample_rate, channels=self.channels)
+                source_name = f"Loopback: {default_speaker.name}"
+            
+            if recorder_context is None:
+                print("❌ Could not open audio device")
                 return
             
-            print(f"🎤 Recording from: {loopback.name}")
+            print(f"🎤 Recording from: {source_name}")
             
-            with loopback.recorder(samplerate=self.sample_rate, channels=self.channels) as recorder:
+            with recorder_context as recorder:
                 while not self._stop_recording_event.is_set():
                     # Record small chunks
                     data = recorder.record(numframes=int(self.sample_rate * 0.1))  # 100ms chunks

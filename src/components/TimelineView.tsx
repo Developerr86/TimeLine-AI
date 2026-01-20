@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Sparkles, RefreshCw } from 'lucide-react';
 import ActivityCard from './ActivityCard';
+import NotesModal from './NotesModal';
 import { api, Activity } from '../services/api';
 
 interface TimelineViewProps {
@@ -12,7 +13,7 @@ export default function TimelineView({ showNotification, onRefresh }: TimelineVi
     const [activities, setActivities] = useState<Activity[]>([]);
     const [loading, setLoading] = useState(true);
     const [notes, setNotes] = useState<string | null>(null);
-    const [generatingNotes, setGeneratingNotes] = useState(false);
+    const [showNotesModal, setShowNotesModal] = useState(false);
 
     const fetchActivities = useCallback(async () => {
         try {
@@ -31,21 +32,13 @@ export default function TimelineView({ showNotification, onRefresh }: TimelineVi
         return () => clearInterval(interval);
     }, [fetchActivities]);
 
-    const handleGenerateNotes = async () => {
-        setGeneratingNotes(true);
-        try {
-            const response = await api.generateNotes();
-            if (response.status === 'success' && response.notes) {
-                setNotes(response.notes);
-                showNotification(`✅ Notes generated from ${response.activity_count} activities`, 'success');
-            } else {
-                showNotification(`❌ ${response.message || 'Failed to generate notes'}`, 'error');
-            }
-        } catch (error) {
-            showNotification('❌ Failed to generate notes', 'error');
-        } finally {
-            setGeneratingNotes(false);
-        }
+    const handleOpenNotesModal = () => {
+        setShowNotesModal(true);
+    };
+
+    const handleNotesGenerated = (generatedNotes: string, sessionCount: number) => {
+        setNotes(generatedNotes);
+        showNotification(`✅ Notes generated from ${sessionCount} session(s)`, 'success');
     };
 
     const handleRefresh = () => {
@@ -103,7 +96,7 @@ export default function TimelineView({ showNotification, onRefresh }: TimelineVi
                 </div>
             </div>
 
-            {/* AI Notes Section */}
+            {/* Notes Generation Section */}
             <div className="glass rounded-xl p-5 mb-6">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
@@ -111,26 +104,16 @@ export default function TimelineView({ showNotification, onRefresh }: TimelineVi
                             <Sparkles className="w-4 h-4 text-white" />
                         </div>
                         <div>
-                            <h3 className="font-medium text-white">AI Activity Notes</h3>
-                            <p className="text-xs text-gray-500">Based on recent history</p>
+                            <h3 className="font-medium text-white">Notes Generation</h3>
+                            <p className="text-xs text-gray-500">Generate notes from processed activities</p>
                         </div>
                     </div>
                     <button
-                        onClick={handleGenerateNotes}
-                        disabled={generatingNotes}
+                        onClick={handleOpenNotesModal}
                         className="btn-primary text-sm"
                     >
-                        {generatingNotes ? (
-                            <>
-                                <span className="spinner w-4 h-4" />
-                                Generating...
-                            </>
-                        ) : (
-                            <>
-                                <Sparkles className="w-4 h-4" />
-                                Generate Notes
-                            </>
-                        )}
+                        <Sparkles className="w-4 h-4" />
+                        Generate Notes
                     </button>
                 </div>
 
@@ -147,7 +130,7 @@ export default function TimelineView({ showNotification, onRefresh }: TimelineVi
                             }}
                         />
                     ) : (
-                        <p className="italic">Click "Generate Notes" to analyze your recent activities using AI...</p>
+                        <p className="italic">Click "Generate Notes" to select activities and create study notes...</p>
                     )}
                 </div>
             </div>
@@ -170,6 +153,14 @@ export default function TimelineView({ showNotification, onRefresh }: TimelineVi
                     ))}
                 </div>
             )}
+
+            {/* Notes Modal */}
+            <NotesModal
+                isOpen={showNotesModal}
+                onClose={() => setShowNotesModal(false)}
+                onNotesGenerated={handleNotesGenerated}
+                showNotification={showNotification}
+            />
         </div>
     );
 }

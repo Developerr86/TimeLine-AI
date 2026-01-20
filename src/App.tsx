@@ -8,6 +8,7 @@ import Notification from './components/Notification';
 import ScenarioDialog from './components/ScenarioDialog';
 import ActivityList from './components/ActivityList';
 import ScenarioDetailsView from './components/ScenarioDetailsView';
+import ChatView from './components/ChatView';
 import { api, StatusResponse } from './services/api';
 
 export interface NotificationState {
@@ -34,10 +35,12 @@ function MainLayout({
 }) {
     const location = useLocation();
     const isScenarioPage = location.pathname.startsWith('/scenario/');
+    const isChatPage = location.pathname === '/chat';
+    const showControls = !isScenarioPage && !isChatPage;
 
     return (
         <>
-            {!isScenarioPage && (
+            {showControls && (
                 <>
                     <ControlPanel
                         status={status}
@@ -172,6 +175,14 @@ function App() {
                                 path="/settings"
                                 element={
                                     <SettingsView
+                                        showNotification={showNotification}
+                                    />
+                                }
+                            />
+                            <Route
+                                path="/chat"
+                                element={
+                                    <ChatView
                                         showNotification={showNotification}
                                     />
                                 }

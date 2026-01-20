@@ -32,6 +32,7 @@ export interface Config {
     notes_model_provider: 'gemini' | 'ollama';
     notes_ollama_model: string;
     enabled: boolean;
+    audio_library: 'soundcard' | 'pyaudiowpatch';
 }
 
 export interface PendingScenario {
@@ -98,7 +99,24 @@ export interface NotesResponse {
     status: 'success' | 'error';
     notes?: string;
     message?: string;
-    activity_count?: number;
+    session_count?: number;
+    chunks_used?: number;
+}
+
+export interface ProcessedSession {
+    id: string;
+    type: 'VIDEO' | 'DOC' | 'WEB' | null;
+    title: string | null;
+    source_url: string | null;
+    source_path: string | null;
+    start_time: string | null;
+    end_time: string | null;
+    indexed: boolean;
+}
+
+export interface ProcessedSessionsResponse {
+    sessions: ProcessedSession[];
+    count: number;
 }
 
 export interface PendingActivity {
@@ -246,9 +264,17 @@ class ApiService {
         return this.request('/api/stop', { method: 'POST' });
     }
 
-    async generateNotes(): Promise<NotesResponse> {
-        return this.request('/api/generate_notes', { method: 'POST' });
+    async generateNotes(sessionIds: string[]): Promise<NotesResponse> {
+        return this.request('/api/generate_notes', {
+            method: 'POST',
+            body: JSON.stringify({ session_ids: sessionIds }),
+        });
     }
+
+    async getProcessedSessions(): Promise<ProcessedSessionsResponse> {
+        return this.request<ProcessedSessionsResponse>('/api/sessions/processed');
+    }
+
 
     async uploadImage(file: File): Promise<{
         status: string;
@@ -336,6 +362,75 @@ class ApiService {
     getFrameUrl(sessionId: string, filename: string): string {
         return `${this.baseUrl}/api/media/video/${sessionId}/frames/${filename}`;
     }
+
+    // =========================================================================
+    // RAG Chat Methods
+    // =========================================================================
+
+    async chat(query: string): Promise<ChatResponse> {
+        return this.request<ChatResponse>('/api/chat', {
+            method: 'POST',
+            body: JSON.stringify({ query }),
+        });
+    }
+
+    async getRagStats(): Promise<RagStatsResponse> {
+        return this.request<RagStatsResponse>('/api/rag/stats');
+    }
+
+    async getRagCapabilities(): Promise<RagCapabilitiesResponse> {
+        return this.request<RagCapabilitiesResponse>('/api/rag/capabilities');
+    }
+
+    async indexSession(sessionId: string): Promise<{ status: string; chunks_indexed?: number; message?: string }> {
+        return this.request('/api/rag/index', {
+            method: 'POST',
+            body: JSON.stringify({ session_id: sessionId }),
+        });
+    }
+}
+
+export interface ChatSource {
+    session_id: string;
+    source: string;
+    title: string;
+    relevance?: number;
+}
+
+export interface ChatResponse {
+    status: string;
+    response?: string;
+    sources?: ChatSource[];
+    chunks_used?: number;
+    message?: string;
+    errors?: string[];
+}
+
+export interface RagSession {
+    session_id: string;
+    source: string;
+    title: string;
+    chunk_count: number;
+}
+
+export interface RagStatsResponse {
+    status: string;
+    initialized?: boolean;
+    total_chunks?: number;
+    sessions?: RagSession[];
+    embedding_model?: string;
+    llm_model?: string;
+    error?: string;
+}
+
+export interface RagCapabilitiesResponse {
+    status: string;
+    capabilities: {
+        chromadb: boolean;
+        sentence_transformers: boolean;
+        ollama: boolean;
+        fully_available: boolean;
+    };
 }
 
 export const api = new ApiService();

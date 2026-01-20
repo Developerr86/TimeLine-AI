@@ -26,6 +26,7 @@ from scenarios.web_capture import WebCaptureHandler
 from scenarios.doc_capture import DocCaptureHandler
 from scenarios.video_capture import VideoCaptureHandler
 from media_listener import get_media_listener, MediaListener
+from rag_engine import get_rag_engine, RAGEngine
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -1134,6 +1135,103 @@ def list_sessions():
         db.close()
 
 
+@app.route('/api/sessions/processed', methods=['GET'])
+def list_processed_sessions():
+    """
+    List all sessions that have been processed and indexed.
+    These are sessions with text content that can be used for notes generation.
+    """
+    db = get_db()
+    try:
+        # Get sessions that have associated text content
+        sessions = db.query(CaptureSession).join(
+            CapturedText, CaptureSession.id == CapturedText.session_id
+        ).order_by(
+            CaptureSession.start_time.desc()
+        ).distinct().limit(100).all()
+        
+        result = []
+        for session in sessions:
+            session_dict = session.to_dict()
+            # Check if session is indexed in RAG
+            rag = get_rag_engine()
+            stats = rag.get_stats()
+            indexed_sessions = {s["session_id"] for s in stats.get("sessions", [])}
+            session_dict["indexed"] = session.id in indexed_sessions
+            result.append(session_dict)
+        
+        return jsonify({
+            "sessions": result,
+            "count": len(result)
+        })
+    finally:
+        db.close()
+
+
+@app.route('/api/generate_notes', methods=['POST'])
+def generate_notes():
+    """
+    Generate notes from selected processed sessions.
+    
+    Request body: {
+        "session_ids": ["uuid-1", "uuid-2", ...]
+    }
+    
+    Response: {
+        "status": "success",
+        "notes": "...",
+        "session_count": 2,
+        "chunks_used": 10
+    }
+    """
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({
+            'status': 'error',
+            'message': 'No data provided'
+        }), 400
+    
+    session_ids = data.get('session_ids', [])
+    
+    if not session_ids:
+        return jsonify({
+            'status': 'error',
+            'message': 'No session_ids provided'
+        }), 400
+    
+    # Get notes model from config
+    config = load_config()
+    notes_model = config.get('notes_ollama_model', 'llama3')
+    
+    try:
+        rag = get_rag_engine(notes_model)
+        result = rag.generate_notes(session_ids, notes_model)
+        
+        if result.get('success'):
+            return jsonify({
+                'status': 'success',
+                'notes': result.get('notes', ''),
+                'session_count': result.get('session_count', 0),
+                'chunks_used': result.get('chunks_used', 0)
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': result.get('errors', ['Notes generation failed'])[0] if result.get('errors') else 'Notes generation failed',
+                'errors': result.get('errors', [])
+            }), 500
+            
+    except Exception as e:
+        import traceback
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"❌ Notes generation error: {error_msg}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
 @app.route('/api/sessions/<session_id>', methods=['GET'])
 def get_session(session_id: str):
     """Get details for a specific session including captured content."""
@@ -1257,7 +1355,7 @@ DEFAULT_CONFIG = {
     "similarity_threshold": 0.95,
     "notes_history_limit": 5,
     "notes_model_provider": "gemini",
-    "notes_ollama_model": "llama3",
+    "notes_ollama_model": "phi3:3.8b",
     "enabled": False
 }
 
@@ -1298,7 +1396,7 @@ def api_config():
         config['similarity_threshold'] = float(data.get('similarity_threshold', 0.95))
         config['notes_history_limit'] = int(data.get('notes_history_limit', 5))
         config['notes_model_provider'] = data.get('notes_model_provider', 'gemini')
-        config['notes_ollama_model'] = data.get('notes_ollama_model', 'llama3')
+        config['notes_ollama_model'] = data.get('notes_ollama_model', 'phi3:3.8b')
         
         save_config(config)
         return jsonify({'status': 'success', 'config': config})
@@ -1360,6 +1458,154 @@ def upload_image():
     except Exception as e:
         db.rollback()
         return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        db.close()
+
+
+# ============================================================================
+# RAG Chat Endpoints
+# ============================================================================
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """
+    Chat with your notes using RAG (Retrieval-Augmented Generation).
+    
+    Request body: {
+        "query": "What did I learn about machine learning?"
+    }
+    
+    Response: {
+        "response": "Based on your notes...",
+        "sources": [{"session_id": "...", "title": "...", "source": "video"}],
+        "success": true
+    }
+    """
+    data = request.get_json()
+    if not data or not data.get('query'):
+        return jsonify({
+            'status': 'error',
+            'message': 'No query provided'
+        }), 400
+    
+    query = data.get('query', '').strip()
+    
+    try:
+        rag = get_rag_engine()
+        result = rag.query(query)
+        
+        if result.get('success'):
+            return jsonify({
+                'status': 'success',
+                'response': result.get('response', ''),
+                'sources': result.get('sources', []),
+                'chunks_used': result.get('chunks_used', 0)
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': result.get('errors', ['Unknown error'])[0] if result.get('errors') else 'Query failed',
+                'errors': result.get('errors', [])
+            }), 500
+            
+    except Exception as e:
+        import traceback
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"❌ Chat error: {error_msg}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/rag/stats', methods=['GET'])
+def rag_stats():
+    """Get RAG engine statistics (indexed sessions, chunk counts, etc.)."""
+    try:
+        rag = get_rag_engine()
+        stats = rag.get_stats()
+        return jsonify({
+            'status': 'success',
+            **stats
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/rag/capabilities', methods=['GET'])
+def rag_capabilities():
+    """Get RAG engine capabilities (which dependencies are installed)."""
+    return jsonify({
+        'status': 'success',
+        'capabilities': RAGEngine.get_capabilities()
+    })
+
+
+@app.route('/api/rag/index', methods=['POST'])
+def rag_index_session():
+    """
+    Manually index a session's content.
+    
+    Request body: {
+        "session_id": "uuid-here"
+    }
+    """
+    data = request.get_json()
+    if not data or not data.get('session_id'):
+        return jsonify({
+            'status': 'error',
+            'message': 'No session_id provided'
+        }), 400
+    
+    session_id = data.get('session_id')
+    
+    db = get_db()
+    try:
+        # Get session info
+        session = db.query(CaptureSession).filter_by(id=session_id).first()
+        if not session:
+            return jsonify({
+                'status': 'error',
+                'message': f'Session not found: {session_id}'
+            }), 404
+        
+        # Get text content
+        text_record = db.query(CapturedText).filter_by(session_id=session_id).first()
+        if not text_record or not text_record.content:
+            return jsonify({
+                'status': 'error',
+                'message': 'No text content found for session'
+            }), 404
+        
+        # Index the content
+        rag = get_rag_engine()
+        result = rag.index_session(
+            session_id=session_id,
+            text=text_record.content,
+            source=session.type.value.lower() if session.type else "unknown",
+            title=session.title
+        )
+        
+        if result.get('success'):
+            return jsonify({
+                'status': 'success',
+                'chunks_indexed': result.get('chunks_indexed', 0),
+                'session_id': session_id
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': result.get('errors', ['Indexing failed'])[0]
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
     finally:
         db.close()
 

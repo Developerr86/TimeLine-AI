@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     ArrowLeft, FileText, Clock, Cpu, Zap,
-    Save, Edit3, X, Image, RefreshCw, Loader2
+    Save, Edit3, X, Image, RefreshCw, Loader2, Database, Check
 } from 'lucide-react';
 import {
     api,
@@ -28,6 +28,8 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
     const [editedContent, setEditedContent] = useState('');
     const [saving, setSaving] = useState(false);
     const [activeTab, setActiveTab] = useState<'transcript' | 'frames'>('transcript');
+    const [indexing, setIndexing] = useState(false);
+    const [indexed, setIndexed] = useState(false);
 
     const fetchSessionData = useCallback(async () => {
         if (!sessionId) return;
@@ -87,6 +89,26 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
     const handleCancelEdit = () => {
         setIsEditing(false);
         setEditedContent('');
+    };
+
+    const handleIndexTranscript = async () => {
+        if (!sessionId || !transcriptContent) return;
+
+        setIndexing(true);
+        try {
+            const result = await api.indexSession(sessionId);
+            if (result.status === 'success') {
+                setIndexed(true);
+                showNotification(`✅ Indexed ${result.chunks_indexed} chunks into vector store`, 'success');
+            } else {
+                showNotification(`❌ ${result.message || 'Indexing failed'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Failed to index transcript:', error);
+            showNotification('❌ Failed to index transcript', 'error');
+        } finally {
+            setIndexing(false);
+        }
     };
 
     const formatTime = (seconds: number) => {
@@ -274,6 +296,24 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
                                 >
                                     <Edit3 className="w-4 h-4" />
                                     Edit
+                                </button>
+                            )}
+                            {/* Chunk & Index button - only show when session has transcript and is not active */}
+                            {!isActive && !isEditing && transcriptContent && (
+                                <button
+                                    onClick={handleIndexTranscript}
+                                    disabled={indexing}
+                                    className={`btn-secondary text-sm ${indexed ? 'text-green-400' : ''}`}
+                                    title={indexed ? 'Already indexed' : 'Chunk and index transcript for RAG search'}
+                                >
+                                    {indexing ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : indexed ? (
+                                        <Check className="w-4 h-4" />
+                                    ) : (
+                                        <Database className="w-4 h-4" />
+                                    )}
+                                    {indexed ? 'Indexed' : 'Chunk & Index'}
                                 </button>
                             )}
                             {isEditing && (

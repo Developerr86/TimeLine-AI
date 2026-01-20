@@ -127,6 +127,25 @@ class WebCaptureHandler:
                 if main_text:
                     self._save_transcript(session_id, main_text)
                 
+                # Index extracted text for RAG search
+                if main_text:
+                    try:
+                        from rag_engine import get_rag_engine
+                        rag = get_rag_engine()
+                        
+                        index_result = rag.index_session(
+                            session_id=session_id,
+                            text=main_text,
+                            source="web",
+                            title=title or "Web Article"
+                        )
+                        if index_result.get("success"):
+                            print(f"  🔍 Indexed {index_result.get('chunks_indexed', 0)} chunks for RAG search")
+                        else:
+                            print(f"  ⚠️ RAG indexing failed: {index_result.get('errors', [])}")
+                    except Exception as rag_error:
+                        print(f"  ⚠️ RAG indexing error (non-fatal): {rag_error}")
+                
                 print(f"✅ Web capture complete: {len(main_text)} chars, {len(downloaded_images)} images")
                 
             except Exception as e:
@@ -240,6 +259,25 @@ class WebCaptureHandler:
                 
                 # Save to transcript.txt for frontend compatibility
                 self._save_transcript(session_id, main_text, session_dir)
+                
+                # Index extracted text for RAG search
+                if main_text:
+                    try:
+                        from rag_engine import get_rag_engine
+                        rag = get_rag_engine()
+                        
+                        index_result = rag.index_session(
+                            session_id=session_id,
+                            text=main_text,
+                            source="web",
+                            title=title or "Web Article"
+                        )
+                        if index_result.get("success"):
+                            print(f"  🔍 Indexed {index_result.get('chunks_indexed', 0)} chunks for RAG search")
+                        else:
+                            print(f"  ⚠️ RAG indexing failed: {index_result.get('errors', [])}")
+                    except Exception as rag_error:
+                        print(f"  ⚠️ RAG indexing error (non-fatal): {rag_error}")
                 
                 print(f"✅ Web snapshot processed: {len(main_text)} chars, {len(downloaded_images)} images")
                 

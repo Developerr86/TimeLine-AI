@@ -158,6 +158,26 @@ class DocCaptureHandler:
                 result["stored_path"] = str(stored_path)
                 print(f"✅ Document capture complete: {result['text_length']} chars via {result['method']}")
                 
+                # Index extracted text for RAG search
+                if extracted_text:
+                    try:
+                        from rag_engine import get_rag_engine
+                        rag = get_rag_engine()
+                        
+                        title = original_filename or file_path.name
+                        index_result = rag.index_session(
+                            session_id=session_id,
+                            text=extracted_text,
+                            source="doc",
+                            title=title
+                        )
+                        if index_result.get("success"):
+                            print(f"  🔍 Indexed {index_result.get('chunks_indexed', 0)} chunks for RAG search")
+                        else:
+                            print(f"  ⚠️ RAG indexing failed: {index_result.get('errors', [])}")
+                    except Exception as rag_error:
+                        print(f"  ⚠️ RAG indexing error (non-fatal): {rag_error}")
+                
             except Exception as e:
                 db.rollback()
                 result["errors"].append(f"Database error: {str(e)}")

@@ -5,11 +5,13 @@ import {
     BarChart3,
     Calendar,
     Info,
-    Sparkles
+    Sparkles,
+    MessageSquare
 } from 'lucide-react';
 
 const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Timeline' },
+    { to: '/chat', icon: MessageSquare, label: 'Chat' },
     { to: '#', icon: BarChart3, label: 'Analytics', disabled: true },
     { to: '#', icon: Calendar, label: 'Calendar', disabled: true },
     { to: '/settings', icon: Settings, label: 'Settings' },

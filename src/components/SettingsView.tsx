@@ -18,7 +18,8 @@ export default function SettingsView({ showNotification }: SettingsViewProps) {
         similarity_threshold: 0.95,
         notes_history_limit: 5,
         notes_model_provider: 'gemini',
-        notes_ollama_model: 'llama3',
+        notes_ollama_model: 'phi3:3.8b',
+        audio_library: 'pyaudiowpatch',
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -173,6 +174,22 @@ export default function SettingsView({ showNotification }: SettingsViewProps) {
                             <p className="text-xs text-gray-500 mt-1">Text model for notes (e.g., llama3, mistral)</p>
                         </div>
                     )}
+
+                    {/* Audio Recording Library */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                            🎤 Audio Recording Library
+                        </label>
+                        <select
+                            className="select"
+                            value={config.audio_library}
+                            onChange={(e) => handleChange('audio_library', e.target.value as 'soundcard' | 'pyaudiowpatch')}
+                        >
+                            <option value="pyaudiowpatch">pyaudiowpatch (Recommended)</option>
+                            <option value="soundcard">soundcard</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">Choose 'pyaudiowpatch' if audio is choppy or broken. Requires app restart.</p>
+                    </div>
 
                     <hr className="border-white/10 my-6" />
 

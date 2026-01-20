@@ -13,6 +13,24 @@ from datetime import datetime
 from typing import Dict, Any, Optional, Callable, List
 import cv2
 import numpy as np
+
+# Monkeypatch numpy.fromstring to fix compability with soundcard < 0.4.2 and numpy >= 1.20
+# soundcard uses numpy.fromstring for binary data, which was removed.
+try:
+    if not hasattr(np, '_is_patched_for_soundcard'):
+        _original_fromstring = np.fromstring
+        
+        def _patched_fromstring(string, dtype=float, count=-1, sep=''):
+            if sep == '':
+                # Binary mode - use frombuffer
+                return np.frombuffer(string, dtype=dtype, count=count)
+            return _original_fromstring(string, dtype=dtype, count=count, sep=sep)
+            
+        np.fromstring = _patched_fromstring
+        np._is_patched_for_soundcard = True
+        print("🔧 Applied monkeypatch for numpy.fromstring (soundcard compatibility)")
+except Exception as e:
+    print(f"⚠️ Failed to patch numpy: {e}")
 from PIL import ImageGrab
 
 try:
@@ -32,17 +50,18 @@ except ImportError:
 try:
     import soundcard as sc
     HAS_SOUNDCARD = True
+    # Suppress non-critical data discontinuity warnings (common during recording)
+    import warnings
+    warnings.filterwarnings('ignore', message='data discontinuity in recording')
 except ImportError:
     HAS_SOUNDCARD = False
 
-# Fallback: pyaudiowpatch for Windows loopback
-HAS_PYAUDIO = False
-if not HAS_SOUNDCARD:
-    try:
-        import pyaudiowpatch as pyaudio
-        HAS_PYAUDIO = True
-    except ImportError:
-        pass
+# Fallback: pyaudiowpatch for Windows loopback (check independently)
+try:
+    import pyaudiowpatch as pyaudio
+    HAS_PYAUDIO = True
+except ImportError:
+    HAS_PYAUDIO = False
 
 # GPU availability detection
 def _detect_gpu() -> bool:
@@ -268,15 +287,35 @@ class StreamingTranscriber:
         }
     
     def _record_loop(self):
-        """Record audio in chunks using soundcard loopback."""
+        """Record audio in chunks using configured library."""
         print("🎧 Record loop started")
+        
+        # Read audio_library setting from config.json
+        audio_library = "pyaudiowpatch"  # default
         try:
-            if HAS_SOUNDCARD:
-                print("   Using soundcard library for recording")
+            import json
+            config_path = Path(__file__).parent.parent / "config.json"
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    audio_library = config.get("audio_library", "pyaudiowpatch")
+                    print(f"📋 Audio library from config: {audio_library}")
+        except Exception as e:
+            print(f"⚠️ Could not read config.json, using default: {e}")
+        
+        try:
+            if audio_library == "pyaudiowpatch" and HAS_PYAUDIO:
+                print("   Using pyaudiowpatch library for recording (from config)")
+                self._record_with_pyaudio()
+            elif audio_library == "soundcard" and HAS_SOUNDCARD:
+                print("   Using soundcard library for recording (from config)")
                 self._record_with_soundcard()
             elif HAS_PYAUDIO:
-                print("   Using pyaudiowpatch library for recording")
+                print("   Fallback: Using pyaudiowpatch library for recording")
                 self._record_with_pyaudio()
+            elif HAS_SOUNDCARD:
+                print("   Fallback: Using soundcard library for recording")
+                self._record_with_soundcard()
             else:
                 print("❌ No recording library available in record loop!")
         except Exception as e:
@@ -288,22 +327,43 @@ class StreamingTranscriber:
     def _record_with_soundcard(self):
         """Record using soundcard library (preferred)."""
         try:
-            # Get default speaker's loopback
-            default_speaker = sc.default_speaker()
-            print(f"🔊 Attempting to record loopback from: {default_speaker.name}")
+            # Search for 'Stereo Mix' device first
+            preferred_mic = None
+            print("🔍 Searching for 'Stereo Mix' audio device...")
             
+            try:
+                # Get all microphones including loopback
+                all_mics = sc.all_microphones(include_loopback=True)
+                for mic in all_mics:
+                    if "stereo mix" in mic.name.lower():
+                        preferred_mic = mic
+                        print(f"✅ Found preferred device: {mic.name}")
+                        break
+            except Exception as e:
+                print(f"⚠️ Error searching for mics: {e}")
+
+            # Fallback to default speaker loopback
+            if preferred_mic:
+                recorder_context = preferred_mic.recorder(samplerate=self.sample_rate)
+                source_name = preferred_mic.name
+            else:
+                default_speaker = sc.default_speaker()
+                print(f"⚠️ 'Stereo Mix' not found. Falling back to default loopback: {default_speaker.name}")
+                recorder_context = sc.get_microphone(
+                    id=str(default_speaker.name),
+                    include_loopback=True
+                ).recorder(samplerate=self.sample_rate)
+                source_name = f"Loopback: {default_speaker.name}"
+
             # Calculate samples per chunk
             samples_per_chunk = int(self.sample_rate * self.chunk_duration)
             print(f"   Sample rate: {self.sample_rate} Hz")
             print(f"   Chunk duration: {self.chunk_duration}s")
             print(f"   Samples per chunk: {samples_per_chunk}")
             
-            print("🎤 Opening loopback microphone...")
-            with sc.get_microphone(
-                id=str(default_speaker.name),
-                include_loopback=True
-            ).recorder(samplerate=self.sample_rate) as mic:
-                print("✅ Loopback microphone opened successfully!")
+            print(f"🎤 Opening audio source: {source_name}...")
+            with recorder_context as mic:
+                print(f"✅ Audio source opened successfully: {source_name}")
                 print("🎙️ Starting to record audio chunks...")
                 
                 chunk_count = 0
@@ -463,6 +523,8 @@ class StreamingTranscriber:
                     vad_filter=True,
                     language=None  # Auto-detect
                 )
+                # Convert generator to list immediately so we can both detect language AND get text
+                segments_list = list(segments)
                 self._detected_language = info.language
                 self._language_detection_done = True
                 print(f"  🌐 Detected language: {self._detected_language}")
@@ -474,9 +536,10 @@ class StreamingTranscriber:
                     vad_filter=True,
                     language=self._detected_language
                 )
+                segments_list = list(segments)
             
             text_parts = []
-            for segment in segments:
+            for segment in segments_list:
                 text_parts.append(segment.text.strip())
             
             chunk_text = " ".join(text_parts)
@@ -1109,6 +1172,28 @@ class VideoCaptureHandler:
                 db.commit()
                 print(f"  💾 Transcript saved to database")
                 result["success"] = True
+                
+                # Index transcript for RAG search
+                try:
+                    from rag_engine import get_rag_engine
+                    rag = get_rag_engine()
+                    
+                    # Get session title
+                    session = db.query(CaptureSession).filter_by(id=session_id).first()
+                    title = session.title if session else "Video Session"
+                    
+                    index_result = rag.index_session(
+                        session_id=session_id,
+                        text=transcript,
+                        source="video",
+                        title=title
+                    )
+                    if index_result.get("success"):
+                        print(f"  🔍 Indexed {index_result.get('chunks_indexed', 0)} chunks for RAG search")
+                    else:
+                        print(f"  ⚠️ RAG indexing failed: {index_result.get('errors', [])}")
+                except Exception as rag_error:
+                    print(f"  ⚠️ RAG indexing error (non-fatal): {rag_error}")
                 
             except Exception as e:
                 db.rollback()
