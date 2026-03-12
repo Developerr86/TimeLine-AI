@@ -1,17 +1,18 @@
 import { useNavigate } from 'react-router-dom';
 import { api, Activity } from '../services/api';
 import {
-    Monitor,
     Youtube,
     Globe,
     Github,
     Code,
     Smartphone,
-    AlertTriangle
+    AlertTriangle,
+    Trash2
 } from 'lucide-react';
 
 interface ActivityCardProps {
     activity: Activity;
+    onDelete?: (activity: Activity) => void;
 }
 
 function getActivityIcon(title: string) {
@@ -46,7 +47,7 @@ function formatTime(timestamp: string): string {
     }
 }
 
-export default function ActivityCard({ activity }: ActivityCardProps) {
+export default function ActivityCard({ activity, onDelete }: ActivityCardProps) {
     const navigate = useNavigate();
     const { icon: IconComponent, color } = getActivityIcon(activity.title);
     const screenshotUrl = activity.image_path ? api.getScreenshotUrl(activity.image_path) : null;
@@ -55,6 +56,18 @@ export default function ActivityCard({ activity }: ActivityCardProps) {
     const handleClick = () => {
         if (hasSession) {
             navigate(`/scenario/${activity.session_id}`);
+        }
+    };
+
+    const handleDelete = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        
+        if (!activity.session_id) {
+            return;
+        }
+
+        if (onDelete) {
+            onDelete(activity);
         }
     };
 
@@ -73,6 +86,15 @@ export default function ActivityCard({ activity }: ActivityCardProps) {
                     <h3 className="font-medium text-white truncate">{activity.title}</h3>
                     <p className="text-sm text-gray-400">{formatTime(activity.timestamp)}</p>
                 </div>
+                {hasSession && (
+                    <button
+                        onClick={handleDelete}
+                        className="p-2 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors"
+                        title="Delete activity"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                )}
             </div>
 
             {/* Screenshot Preview */}
@@ -106,17 +128,9 @@ export default function ActivityCard({ activity }: ActivityCardProps) {
                 <div className="grid grid-cols-2 gap-3">
                     <div className="glass-light rounded-lg p-2.5">
                         <div className="flex items-center justify-between">
-                            <span className="text-xs uppercase tracking-wider text-gray-500">Model</span>
+                            <span className="text-xs uppercase tracking-wider text-gray-500">Type</span>
                             <span className="text-xs font-medium text-coral-400 truncate max-w-[80px]">
                                 {activity.model_name?.slice(0, 12) || activity.model}
-                            </span>
-                        </div>
-                    </div>
-                    <div className="glass-light rounded-lg p-2.5">
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs uppercase tracking-wider text-gray-500">Tokens</span>
-                            <span className="text-xs font-medium text-coral-400">
-                                {activity.token_usage?.total_tokens || '-'}
                             </span>
                         </div>
                     </div>

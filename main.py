@@ -643,14 +643,39 @@ def get_session_frames(session_id):
 def get_session_transcript(session_id):
     """
     Read the transcript.txt file for a session.
-    Supports VIDEO (media/video), DOC (media/docs), and WEB (media/web) sessions.
+    Supports VIDEO (media/video), DOC (media/docs), WEB (media/web), and IMG sessions.
+    For IMG sessions, returns the description from captured_texts table.
     """
-    from models import MEDIA_VIDEO_DIR, MEDIA_DOCS_DIR, MEDIA_WEB_DIR, CaptureSession, SessionType
+    from models import MEDIA_VIDEO_DIR, MEDIA_DOCS_DIR, MEDIA_WEB_DIR, CaptureSession, SessionType, CapturedText
     
     # First, determine session type from database
     db = get_db()
     try:
         session = db.query(CaptureSession).filter_by(id=session_id).first()
+        
+        # For IMG sessions, return the description from captured_texts
+        if session and session.type == SessionType.IMG:
+            # Look for description content
+            captured_text = db.query(CapturedText).filter_by(
+                session_id=session_id,
+                content_type="description"
+            ).first()
+            
+            if captured_text and captured_text.content:
+                content = captured_text.content
+                # For description, treat whole content as one chunk
+                return jsonify({
+                    'content': content,
+                    'exists': True,
+                    'chunks': [{'text': content}]
+                })
+            else:
+                return jsonify({
+                    'content': '',
+                    'exists': False,
+                    'chunks': []
+                })
+        
         if session and session.type == SessionType.DOC:
             transcript_path = MEDIA_DOCS_DIR / session_id / "transcript.txt"
         elif session and session.type == SessionType.WEB:
@@ -1406,8 +1431,9 @@ def api_config():
 @app.route('/api/upload_image', methods=['POST'])
 def upload_image():
     """
-    Legacy endpoint for image upload from old frontend.
-    Redirects to the new document capture flow.
+    Upload and process an image or document using the selected vision model.
+    - Images (jpg, jpeg, png, gif, webp, bmp): Creates an IMG session with title and description
+    - Documents (pdf, doc, docx): Creates a DOC session for text extraction
     """
     if 'image' not in request.files:
         return jsonify({'status': 'error', 'message': 'No image file provided'}), 400
@@ -1416,22 +1442,162 @@ def upload_image():
     if file.filename == '':
         return jsonify({'status': 'error', 'message': 'No file selected'}), 400
     
-    # Save to screenshots directory (legacy behavior)
+    # Determine file type based on extension
+    import os
+    filename = file.filename
+    ext = os.path.splitext(filename)[1].lower() if filename else ''
+    
+    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
+    doc_extensions = {'.pdf', '.doc', '.docx'}
+    
+    is_image = ext in image_extensions
+    is_doc = ext in doc_extensions
+    
+    if not is_image and not is_doc:
+        return jsonify({'status': 'error', 'message': 'Unsupported file type. Please upload an image (jpg, png, gif, webp, bmp) or document (pdf, doc, docx)'}), 400
+    
+    # Save file
     from werkzeug.utils import secure_filename
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    filename = f"uploaded_{timestamp}.png"
+    
+    if is_image:
+        filename = f"uploaded_{timestamp}{ext}"
+    else:
+        filename = f"uploaded_{timestamp}{ext}"
+    
     filepath = SCREENSHOTS_DIR / filename
     
     file.save(filepath)
-    print(f"📤 Image uploaded: {filename}")
+    print(f"📤 File uploaded: {filename}")
     
-    # Create a quick analysis session (simplified version)
+    # Process based on type
+    if is_image:
+        # Process image with vision model
+        return process_uploaded_image(filepath, filename)
+    else:
+        # Process document (pdf/word)
+        return process_uploaded_document(filepath, filename)
+
+
+def process_uploaded_image(filepath, original_filename):
+    """Process an uploaded image with vision model."""
+    config = load_config()
+    model_type = config.get('model_type', 'remote')
+    ollama_model = config.get('ollama_model', 'qwen2.5vl:3b')
+    gemini_model = config.get('gemini_model', 'gemini-2.5-pro')
+    remote_url = config.get('remote_url', 'http://localhost:5001/predict')
+    
+    title = "Uploaded Image"
+    description = ""
+    educational = "no"
+    
+    try:
+        import base64
+        
+        def encode_image_to_base64(image_path):
+            with open(image_path, "rb") as image_file:
+                return base64.b64encode(image_file.read()).decode('utf-8')
+        
+        vision_prompt = """
+        Analyze this image carefully and provide:
+        1. A short descriptive title (3-6 words) that summarizes what the image shows
+        2. A detailed description of the image contents, including any text visible, people, objects, scenes, diagrams, charts, or any other visual elements
+        3. Whether this content is educational/learning material (yes/no)
+
+        Educational content includes: tutorials, lectures, courses, textbooks, educational videos, diagrams explaining concepts, code tutorials, documentation, scientific content, mathematical content, historical information, or any learning material.
+
+        Respond with ONLY a valid JSON object:
+        {
+          "title": "Short descriptive title",
+          "description": "Detailed description of what the image shows",
+          "educational": "yes" or "no"
+        }
+        """
+        
+        base64_image = encode_image_to_base64(filepath)
+        
+        if model_type == 'ollama':
+            import ollama
+            client = ollama.Client()
+            response = client.chat(
+                model=ollama_model,
+                messages=[
+                    {
+                        'role': 'user',
+                        'content': vision_prompt,
+                        'images': [base64_image]
+                    }
+                ]
+            )
+            raw_response = response['message']['content']
+            
+        elif model_type == 'gemini':
+            import google.generativeai as genai
+            
+            if not config.get('gemini_api_key'):
+                return jsonify({'status': 'error', 'message': 'Gemini API key not configured'}), 500
+            
+            genai.configure(api_key=config.get('gemini_api_key'))
+            model = genai.GenerativeModel(gemini_model)
+            
+            with open(filepath, 'rb') as image_file:
+                image_data = image_file.read()
+            
+            response = model.generate_content([vision_prompt, {"mime_type": "image/png", "data": image_data}])
+            raw_response = response.text
+            
+        elif model_type == 'remote':
+            import requests
+            
+            with open(filepath, 'rb') as img_file:
+                files = {'image': img_file}
+                data = {'prompt': vision_prompt}
+                response = requests.post(remote_url, files=files, data=data)
+                
+                if response.status_code == 200:
+                    response_json = response.json()
+                    raw_response = response_json.get('response', '')
+                else:
+                    return jsonify({'status': 'error', 'message': f'Remote server error: {response.status_code}'}), 500
+        else:
+            return jsonify({'status': 'error', 'message': f'Unknown model_type: {model_type}'}), 400
+        
+        # Parse JSON response
+        import json
+        
+        if raw_response.strip().startswith("```json"):
+            json_str = raw_response.strip()[7:-3].strip()
+        elif raw_response.strip().startswith("```"):
+            lines = raw_response.strip().split('\n')
+            json_str = '\n'.join(lines[1:-1]).strip()
+        else:
+            json_str = raw_response
+        
+        try:
+            data = json.loads(json_str)
+            title = data.get("title", "Uploaded Image")
+            description = data.get("description", "")
+            educational = data.get("educational", "no").lower()
+            if educational not in ["yes", "no"]:
+                educational = "no"
+        except json.JSONDecodeError:
+            title = "Uploaded Image"
+            description = raw_response[:500] if raw_response else "Failed to analyze image"
+            educational = "no"
+            print(f"⚠️ Failed to parse JSON: {raw_response[:200]}")
+    
+    except Exception as e:
+        print(f"❌ Error processing image: {e}")
+        title = "Uploaded Image"
+        description = f"Error: {str(e)}"
+    
+    # Create IMG session in database
     db = get_db()
     try:
         session = CaptureSession(
             id=str(uuid.uuid4()),
-            type=SessionType.DOC,
-            title=f"Uploaded: {file.filename}",
+            type=SessionType.IMG,
+            title=title,
             source_path=str(filepath)
         )
         db.add(session)
@@ -1444,15 +1610,25 @@ def upload_image():
         )
         db.add(media)
         
+        # Save description as text
+        text = CapturedText(
+            session_id=session.id,
+            content=description,
+            content_type="description"
+        )
+        db.add(text)
+        
         db.commit()
         session_id = session.id
         
         return jsonify({
             'status': 'success',
-            'title': f'Uploaded: {file.filename}',
-            'summary': 'Image uploaded successfully. Analyze it using the new capture flow.',
+            'title': title,
+            'description': description,
+            'educational': educational,
             'image_path': str(filepath),
-            'session_id': session_id
+            'session_id': session_id,
+            'type': 'IMG'
         })
         
     except Exception as e:
@@ -1460,6 +1636,294 @@ def upload_image():
         return jsonify({'status': 'error', 'message': str(e)}), 500
     finally:
         db.close()
+
+
+def process_uploaded_document(filepath, original_filename):
+    """Process an uploaded document (pdf, doc, docx)."""
+    # For documents, just create a DOC session - can be processed later
+    title = f"Document: {original_filename}"
+    description = "Document uploaded. Process to extract text content."
+    
+    db = get_db()
+    try:
+        session = CaptureSession(
+            id=str(uuid.uuid4()),
+            type=SessionType.DOC,
+            title=title,
+            source_path=str(filepath)
+        )
+        db.add(session)
+        
+        # Save media reference
+        media = CapturedMedia(
+            session_id=session.id,
+            file_path=str(filepath),
+            media_type=MediaType.IMAGE
+        )
+        db.add(media)
+        
+        db.commit()
+        session_id = session.id
+        
+        return jsonify({
+            'status': 'success',
+            'title': title,
+            'description': description,
+            'image_path': str(filepath),
+            'session_id': session_id,
+            'type': 'DOC'
+        })
+        
+    except Exception as e:
+        db.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        db.close()
+
+
+# ============================================================================
+# Vision Model Prompt Functions
+# ============================================================================
+
+def get_img_prompt():
+    """Get prompt for single image analysis (uploaded images)."""
+    return """
+Analyze this image carefully and provide:
+1. A short descriptive title (3-6 words) that summarizes what the image shows
+2. A detailed description of the image contents, including any text visible, people, objects, scenes, diagrams, charts, or any other visual elements
+3. Whether this content is educational/learning material (yes/no)
+
+Educational content includes: tutorials, lectures, courses, textbooks, educational videos, diagrams explaining concepts, code tutorials, documentation, scientific content, mathematical content, historical information, or any learning material.
+
+Respond with ONLY a valid JSON object:
+{
+  "title": "Short descriptive title",
+  "description": "Detailed description of what the image shows",
+  "educational": "yes" or "no"
+}
+"""
+
+
+def get_video_frame_prompt(previous_description: str = None):
+    """Get prompt for video frame analysis with optional previous frame context."""
+    context_section = ""
+    if previous_description:
+        context_section = f"""
+IMPORTANT: This is a frame from a video. The previous frame was described as:
+"{previous_description}"
+
+Use this context to understand the progression and provide a description that builds upon the previous frame. If the content is similar (e.g., same lecture, same tutorial), maintain consistency in your description.
+"""
+
+    return f"""
+Analyze this video frame carefully and provide:
+1. A short descriptive title (3-6 words) that summarizes what this frame shows
+2. A detailed description of the frame contents, including any text visible, people, objects, scenes, diagrams, charts, or any visual elements{context_section}
+3. Whether this content is educational/learning material (yes/no)
+
+Educational content includes: tutorials, lectures, courses, textbooks, educational videos, diagrams explaining concepts, code tutorials, documentation, scientific content, mathematical content, historical information, or any learning material.
+
+Respond with ONLY a valid JSON object:
+{{
+  "title": "Short descriptive title",
+  "description": "Detailed description of what this frame shows",
+  "educational": "yes" or "no"
+}}
+"""
+
+
+# Video frame description cache (session_id -> list of frame descriptions)
+_video_frame_cache = {}
+
+
+@app.route('/api/session/<session_id>/process_frame', methods=['POST'])
+def process_video_frame(session_id):
+    """
+    Process a video frame with the vision model, using previous frame context.
+    
+    Request body: {
+        "frame_path": "path/to/frame.jpg",
+        "frame_number": 1
+    }
+    
+    Returns: {
+        "status": "success",
+        "title": "...",
+        "description": "...",
+        "educational": "yes/no",
+        "frame_number": 1
+    }
+    """
+    from models import CapturedMedia, MediaType, CapturedText
+    
+    data = request.get_json()
+    if not data or not data.get('frame_path'):
+        return jsonify({'status': 'error', 'message': 'frame_path required'}), 400
+    
+    frame_path = data.get('frame_path')
+    frame_number = data.get('frame_number', 0)
+    
+    if not Path(frame_path).exists():
+        return jsonify({'status': 'error', 'message': 'Frame file not found'}), 400
+    
+    # Get config
+    config = load_config()
+    model_type = config.get('model_type', 'remote')
+    ollama_model = config.get('ollama_model', 'qwen2.5vl:3b')
+    gemini_model = config.get('gemini_model', 'gemini-2.5-pro')
+    remote_url = config.get('remote_url', 'http://localhost:5001/predict')
+    
+    # Get previous frame description from cache or database
+    previous_description = None
+    if session_id in _video_frame_cache and len(_video_frame_cache[session_id]) > 0:
+        previous_description = _video_frame_cache[session_id][-1]
+    else:
+        # Try to get from database
+        db = get_db()
+        try:
+            # Get previous frame's description
+            prev_text = db.query(CapturedText).filter_by(
+                session_id=session_id,
+                content_type="frame_description"
+            ).order_by(CapturedText.captured_at.desc()).first()
+            
+            if prev_text:
+                previous_description = prev_text.content
+        finally:
+            db.close()
+    
+    # Generate prompt with previous context
+    prompt = get_video_frame_prompt(previous_description)
+    
+    title = "Video Frame"
+    description = ""
+    educational = "no"
+    
+    try:
+        import base64
+        
+        def encode_image_to_base64(image_path):
+            with open(image_path, "rb") as image_file:
+                return base64.b64encode(image_file.read()).decode('utf-8')
+        
+        base64_image = encode_image_to_base64(frame_path)
+        
+        if model_type == 'ollama':
+            import ollama
+            client = ollama.Client()
+            response = client.chat(
+                model=ollama_model,
+                messages=[
+                    {
+                        'role': 'user',
+                        'content': prompt,
+                        'images': [base64_image]
+                    }
+                ]
+            )
+            raw_response = response['message']['content']
+            
+        elif model_type == 'gemini':
+            import google.generativeai as genai
+            
+            if not config.get('gemini_api_key'):
+                return jsonify({'status': 'error', 'message': 'Gemini API key not configured'}), 500
+            
+            genai.configure(api_key=config.get('gemini_api_key'))
+            model = genai.GenerativeModel(gemini_model)
+            
+            with open(frame_path, 'rb') as image_file:
+                image_data = image_file.read()
+            
+            response = model.generate_content([prompt, {"mime_type": "image/jpeg", "data": image_data}])
+            raw_response = response.text
+            
+        elif model_type == 'remote':
+            import requests
+            
+            with open(frame_path, 'rb') as img_file:
+                files = {'image': img_file}
+                data = {'prompt': prompt}
+                response = requests.post(remote_url, files=files, data=data)
+                
+                if response.status_code == 200:
+                    response_json = response.json()
+                    raw_response = response_json.get('response', '')
+                else:
+                    return jsonify({'status': 'error', 'message': f'Remote server error: {response.status_code}'}), 500
+        else:
+            return jsonify({'status': 'error', 'message': f'Unknown model_type: {model_type}'}), 400
+        
+        # Parse JSON response
+        import json
+        
+        if raw_response.strip().startswith("```json"):
+            json_str = raw_response.strip()[7:-3].strip()
+        elif raw_response.strip().startswith("```"):
+            lines = raw_response.strip().split('\n')
+            json_str = '\n'.join(lines[1:-1]).strip()
+        else:
+            json_str = raw_response
+        
+        try:
+            data = json.loads(json_str)
+            title = data.get("title", "Video Frame")
+            description = data.get("description", "")
+            educational = data.get("educational", "no").lower()
+            
+            # Validate educational field
+            if educational not in ["yes", "no"]:
+                educational = "no"
+        except json.JSONDecodeError:
+            title = "Video Frame"
+            description = raw_response[:500] if raw_response else "Failed to analyze frame"
+            educational = "no"
+            print(f"⚠️ Failed to parse JSON: {raw_response[:200]}")
+    
+    except Exception as e:
+        print(f"❌ Error processing video frame: {e}")
+        title = "Video Frame"
+        description = f"Error: {str(e)}"
+        educational = "no"
+    
+    # Save frame description to database
+    db = get_db()
+    try:
+        text_record = CapturedText(
+            session_id=session_id,
+            content=description,
+            content_type="frame_description",
+            source_url_or_path=frame_path
+        )
+        db.add(text_record)
+        db.commit()
+        
+        # Update cache
+        if session_id not in _video_frame_cache:
+            _video_frame_cache[session_id] = []
+        _video_frame_cache[session_id].append(description)
+        
+    except Exception as e:
+        db.rollback()
+        print(f"⚠️ Failed to save frame description: {e}")
+    finally:
+        db.close()
+    
+    return jsonify({
+        'status': 'success',
+        'title': title,
+        'description': description,
+        'educational': educational,
+        'frame_number': frame_number
+    })
+
+
+@app.route('/api/session/<session_id>/clear_frame_cache', methods=['POST'])
+def clear_video_frame_cache(session_id):
+    """Clear the video frame description cache for a session."""
+    if session_id in _video_frame_cache:
+        del _video_frame_cache[session_id]
+    return jsonify({'status': 'success', 'message': 'Cache cleared'})
 
 
 # ============================================================================

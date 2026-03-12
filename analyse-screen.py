@@ -83,20 +83,31 @@ def generate_activity_summary_ollama(image_path: str):
     # This prompt is a simplified version of the prompts found in the
     # `OllamaProvider.swift` file, combining frame description and summary generation.
     prompt = """
-    You are an AI assistant analyzing a user's computer activity from a screenshot.
-    Your task is to describe what is happening on the screen and then create a summary of the activity.
+    You are an AI assistant analyzing a screenshot from a user's computer screen.
+    Your task is to be as descriptive as possible about what you see.
 
-    1.  **Analyze the Screen:** Look closely at the applications, websites, and any visible text on the screen.
-        Be specific and factual. For example, instead of "coding", say "writing a Python function in VS Code".
+    1.  **Extract ALL Text:** Extract every piece of visible text from the screenshot including:
+        - Menu items, buttons, labels
+        - Code snippets or terminal output
+        - Article titles and content
+        - Form fields and their values
+        - Any other textual information
 
-    2.  **Generate a JSON Summary:** Based on your analysis, create a title and a brief summary for this activity.
-        The title should be conversational and 5-8 words long.
-        The summary should be 1-2 sentences describing the main task.
+    2.  **Describe Diagrams and Imagery:** If there are diagrams, charts, graphs, images, or visual elements:
+        - Describe what the diagram shows in detail
+        - Explain the relationships between elements
+        - Describe any labels, legends, or annotations
+        - Note colors, shapes, and layout
+
+    3.  **Analyze Context:** Determine what application or website is being used and what the user is actively doing.
 
     Respond with ONLY a valid JSON object in the following format:
     {
-      "title": "A short, conversational title of the activity",
-      "summary": "A 1-2 sentence summary of what the user is doing."
+      "title": "A short, conversational title (5-8 words)",
+      "extracted_text": "All readable text from the screen, verbatim",
+      "diagram_description": "Detailed description of any diagrams, charts, or visual elements",
+      "imagery_description": "Description of any images or icons present",
+      "context": "What application/website is being used and the current task"
     }
     """
 
@@ -166,11 +177,27 @@ def generate_activity_summary_ollama(image_path: str):
         try:
             summary_data = json.loads(json_str)
             title = summary_data.get("title", "No Title Provided")
-            summary = summary_data.get("summary", "No Summary Provided")
+            extracted_text = summary_data.get("extracted_text", "")
+            diagram_description = summary_data.get("diagram_description", "")
+            imagery_description = summary_data.get("imagery_description", "")
+            context = summary_data.get("context", "")
+
+            # Combine all descriptions for the summary
+            summary_parts = []
+            if extracted_text:
+                summary_parts.append(f"Text: {extracted_text[:500]}")
+            if diagram_description:
+                summary_parts.append(f"Diagrams: {diagram_description[:300]}")
+            if imagery_description:
+                summary_parts.append(f"Images: {imagery_description[:300]}")
+            if context:
+                summary_parts.append(f"Context: {context}")
+            
+            summary = " | ".join(summary_parts) if summary_parts else "No description available"
 
             print("\n--- Activity Summary ---")
             print(f"🏷️  **Title:** {title}")
-            print(f"📝 **Summary:** {summary}")
+            print(f"📝 **Summary:** {summary[:200]}...")
             print("----------------------\n")
 
             # Save response to file
@@ -248,20 +275,31 @@ def generate_activity_summary_gemini(image_path: str):
 
         # Create the prompt
         prompt = """
-        You are an AI assistant analyzing a user's computer activity from a screenshot.
-        Your task is to describe what is happening on the screen and then create a summary of the activity.
+        You are an AI assistant analyzing a screenshot from a user's computer screen.
+        Your task is to be as descriptive as possible about what you see.
 
-        1.  **Analyze the Screen:** Look closely at the applications, websites, and any visible text on the screen.
-            Be specific and factual. For example, instead of "coding", say "writing a Python function in VS Code".
+        1.  **Extract ALL Text:** Extract every piece of visible text from the screenshot including:
+            - Menu items, buttons, labels
+            - Code snippets or terminal output
+            - Article titles and content
+            - Form fields and their values
+            - Any other textual information
 
-        2.  **Generate a JSON Summary:** Based on your analysis, create a title and a brief summary for this activity.
-            The title should be conversational and 5-8 words long.
-            The summary should be 3 sentences describing the main task.
+        2.  **Describe Diagrams and Imagery:** If there are diagrams, charts, graphs, images, or visual elements:
+            - Describe what the diagram shows in detail
+            - Explain the relationships between elements
+            - Describe any labels, legends, or annotations
+            - Note colors, shapes, and layout
+
+        3.  **Analyze Context:** Determine what application or website is being used and what the user is actively doing.
 
         Respond with ONLY a valid JSON object in the following format:
         {
-          "title": "A short, conversational title of the activity",
-          "summary": "A 1-2 sentence summary of what the user is doing."
+          "title": "A short, conversational title (5-8 words)",
+          "extracted_text": "All readable text from the screen, verbatim",
+          "diagram_description": "Detailed description of any diagrams, charts, or visual elements",
+          "imagery_description": "Description of any images or icons present",
+          "context": "What application/website is being used and the current task"
         }
         """
 
@@ -312,11 +350,27 @@ def generate_activity_summary_gemini(image_path: str):
         try:
             summary_data = json.loads(json_str)
             title = summary_data.get("title", "No Title Provided")
-            summary = summary_data.get("summary", "No Summary Provided")
+            extracted_text = summary_data.get("extracted_text", "")
+            diagram_description = summary_data.get("diagram_description", "")
+            imagery_description = summary_data.get("imagery_description", "")
+            context = summary_data.get("context", "")
+
+            # Combine all descriptions for the summary
+            summary_parts = []
+            if extracted_text:
+                summary_parts.append(f"Text: {extracted_text[:500]}")
+            if diagram_description:
+                summary_parts.append(f"Diagrams: {diagram_description[:300]}")
+            if imagery_description:
+                summary_parts.append(f"Images: {imagery_description[:300]}")
+            if context:
+                summary_parts.append(f"Context: {context}")
+            
+            summary = " | ".join(summary_parts) if summary_parts else "No description available"
 
             print("\n--- Activity Summary ---")
             print(f"🏷️  **Title:** {title}")
-            print(f"📝 **Summary:** {summary}")
+            print(f"📝 **Summary:** {summary[:200]}...")
             print("----------------------\n")
 
             # Save response to file
@@ -378,20 +432,31 @@ def generate_activity_summary_remote(image_path: str, url: str):
 
     try:
         prompt = """
-        You are an AI assistant analyzing a user's computer activity from a screenshot.
-        Your task is to describe what is happening on the screen and then create a summary of the activity.
+        You are an AI assistant analyzing a screenshot from a user's computer screen.
+        Your task is to be as descriptive as possible about what you see.
 
-        1.  **Analyze the Screen:** Look closely at the applications, websites, and any visible text on the screen.
-            Be specific and factual. For example, instead of "coding", say "writing a Python function in VS Code".
+        1.  **Extract ALL Text:** Extract every piece of visible text from the screenshot including:
+            - Menu items, buttons, labels
+            - Code snippets or terminal output
+            - Article titles and content
+            - Form fields and their values
+            - Any other textual information
 
-        2.  **Generate a JSON Summary:** Based on your analysis, create a title and a brief summary for this activity.
-            The title should be conversational and 5-8 words long.
-            The summary should be 1-2 sentences describing the main task.
+        2.  **Describe Diagrams and Imagery:** If there are diagrams, charts, graphs, images, or visual elements:
+            - Describe what the diagram shows in detail
+            - Explain the relationships between elements
+            - Describe any labels, legends, or annotations
+            - Note colors, shapes, and layout
+
+        3.  **Analyze Context:** Determine what application or website is being used and what the user is actively doing.
 
         Respond with ONLY a valid JSON object in the following format:
         {
-          "title": "A short, conversational title of the activity",
-          "summary": "A 1-2 sentence summary of what the user is doing."
+          "title": "A short, conversational title (5-8 words)",
+          "extracted_text": "All readable text from the screen, verbatim",
+          "diagram_description": "Detailed description of any diagrams, charts, or visual elements",
+          "imagery_description": "Description of any images or icons present",
+          "context": "What application/website is being used and the current task"
         }
         """
 
@@ -425,14 +490,30 @@ def generate_activity_summary_remote(image_path: str, url: str):
                 try:
                     summary_data = json.loads(json_str)
                     title = summary_data.get("title", "No Title Provided")
-                    summary = summary_data.get("summary", "No Summary Provided")
+                    extracted_text = summary_data.get("extracted_text", "")
+                    diagram_description = summary_data.get("diagram_description", "")
+                    imagery_description = summary_data.get("imagery_description", "")
+                    context = summary_data.get("context", "")
+
+                    # Combine all descriptions for the summary
+                    summary_parts = []
+                    if extracted_text:
+                        summary_parts.append(f"Text: {extracted_text[:500]}")
+                    if diagram_description:
+                        summary_parts.append(f"Diagrams: {diagram_description[:300]}")
+                    if imagery_description:
+                        summary_parts.append(f"Images: {imagery_description[:300]}")
+                    if context:
+                        summary_parts.append(f"Context: {context}")
+                    
+                    summary = " | ".join(summary_parts) if summary_parts else "No description available"
                 except json.JSONDecodeError:
                     title = "Remote Analysis"
                     summary = response_content[:500]
 
                 print("\n--- Activity Summary ---")
                 print(f"🏷️  **Title:** {title}")
-                print(f"📝 **Summary:** {summary}")
+                print(f"📝 **Summary:** {summary[:200]}...")
                 print("----------------------\n")
 
                 response_entry = {

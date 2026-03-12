@@ -150,6 +150,8 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
     const isDocSession = sessionType === 'DOC';
     const isWebSession = sessionType === 'WEB';
     const isVideoSession = sessionType === 'VIDEO';
+    const isImgSession = sessionType === 'IMG';
+    const transcriptLabel = isImgSession ? 'Description' : 'Transcript';
     const modelLoading = transcriber_status?.model_loading || false;
     const modelLoaded = transcriber_status?.model_loaded || false;
     const deviceType = transcriber_status?.device_type || 'cpu';
@@ -247,7 +249,7 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
                         }`}
                 >
                     <FileText className="w-4 h-4" />
-                    Transcript
+                    {transcriptLabel}
                     {displayChunks.length > 0 && (
                         <span className="px-2 py-0.5 bg-purple-500/30 rounded-full text-xs">
                             {displayChunks.length}
@@ -374,7 +376,7 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
                             </div>
                         ) : (
                             <p className="text-gray-500 italic">
-                                {isActive ? 'Waiting for transcript...' : 'No transcript available'}
+                                {isActive ? 'Waiting for transcript...' : (isImgSession ? 'No description available' : 'No transcript available')}
                             </p>
                         )}
                     </div>

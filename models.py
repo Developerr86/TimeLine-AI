@@ -24,6 +24,7 @@ class SessionType(str, Enum):
     WEB = "WEB"
     DOC = "DOC"
     VIDEO = "VIDEO"
+    IMG = "IMG"
 
 
 class MediaType(str, Enum):

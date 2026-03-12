@@ -1,4 +1,4 @@
-import { Play, Square, Upload, Activity, Image } from 'lucide-react';
+import { Play, Square, Upload, Activity, Image, Loader2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { StatusResponse, api } from '../services/api';
 
@@ -11,6 +11,9 @@ interface ControlPanelProps {
 export default function ControlPanel({ status, onStart, onStop }: ControlPanelProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [showScreenshot, setShowScreenshot] = useState(true);
+    const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [uploadedImage, setUploadedImage] = useState<{ path: string; title: string; summary: string; type: string; educational: string } | null>(null);
 
     const handleUploadClick = () => {
         fileInputRef.current?.click();
@@ -20,11 +23,34 @@ export default function ControlPanel({ status, onStart, onStop }: ControlPanelPr
         const file = e.target.files?.[0];
         if (!file) return;
 
+        setUploading(true);
+        setUploadProgress(10);
+        setUploadedImage(null);
+
         try {
-            await api.uploadImage(file);
-            window.location.reload();
+            setUploadProgress(30);
+            const result = await api.uploadImage(file);
+            setUploadProgress(90);
+            
+            if (result.status === 'success') {
+                setUploadedImage({
+                    path: result.image_path || '',
+                    title: result.title || 'Uploaded File',
+                    summary: result.description || result.summary || '',
+                    type: result.type || 'UNKNOWN',
+                    educational: result.educational || 'no'
+                });
+            }
+            setUploadProgress(100);
+            
+            // Refresh after a short delay
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
         } catch (error) {
             console.error('Upload failed:', error);
+            setUploading(false);
+            setUploadProgress(0);
         }
 
         // Reset input
@@ -54,12 +80,6 @@ export default function ControlPanel({ status, onStart, onStop }: ControlPanelPr
                 <div className="flex items-center gap-2">
                     <button className="px-4 py-2 rounded-lg bg-white/10 text-sm font-medium text-white">
                         📋 All tasks
-                    </button>
-                    <button className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:bg-white/5 transition-colors">
-                        💼 Core tasks
-                    </button>
-                    <button className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:bg-white/5 transition-colors">
-                        ⭐ Personal
                     </button>
                 </div>
 
@@ -171,6 +191,73 @@ export default function ControlPanel({ status, onStart, onStop }: ControlPanelPr
                             }}
                         />
                     </div>
+                </div>
+            )}
+
+            {/* Upload Progress / Uploaded Image Preview */}
+            {uploading && (
+                <div className="glass rounded-2xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-medium text-gray-300">Processing Upload</h3>
+                        <span className="text-xs text-gray-500 flex items-center gap-2">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Analyzing image...
+                        </span>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="w-full bg-gray-700 rounded-full h-2 mb-3">
+                        <div 
+                            className="bg-coral-500 h-2 rounded-full transition-all duration-500"
+                            style={{ width: `${uploadProgress}%` }}
+                        />
+                    </div>
+                    <p className="text-xs text-gray-400">
+                        {uploadProgress < 30 && "Uploading image..."}
+                        {uploadProgress >= 30 && uploadProgress < 90 && "Analyzing with AI vision model..."}
+                        {uploadProgress >= 90 && "Finalizing..."}
+                    </p>
+                </div>
+            )}
+
+            {/* Uploaded Image Preview (after processing) */}
+            {uploadedImage && !uploading && uploadedImage.path && (
+                <div className="glass rounded-2xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-medium text-gray-300">Uploaded File Processed</h3>
+                        <span className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400">
+                            ✓ Complete
+                        </span>
+                    </div>
+                    <div className="relative rounded-lg overflow-hidden bg-black/20 mb-3">
+                        <img
+                            src={api.getScreenshotUrl(uploadedImage.path)}
+                            alt="Uploaded and processed"
+                            className="w-full h-auto max-h-64 object-contain"
+                            onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                        />
+                    </div>
+                    {uploadedImage.title && (
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="text-xs px-2 py-0.5 rounded bg-purple-500/20 text-purple-400">
+                                {uploadedImage.type}
+                            </span>
+                            {uploadedImage.educational === 'yes' && (
+                                <span className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400">
+                                    📚 Educational
+                                </span>
+                            )}
+                            <div className="text-sm text-white font-medium">
+                                {uploadedImage.title}
+                            </div>
+                        </div>
+                    )}
+                    {uploadedImage.summary && (
+                        <div className="text-xs text-gray-400 line-clamp-3">
+                            {uploadedImage.summary}
+                        </div>
+                    )}
                 </div>
             )}
         </div>

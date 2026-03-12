@@ -1,19 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Sparkles, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import ActivityCard from './ActivityCard';
-import NotesModal from './NotesModal';
+import ConfirmDialog from './ConfirmDialog';
 import { api, Activity } from '../services/api';
 
 interface TimelineViewProps {
-    showNotification: (message: string, type: 'info' | 'success' | 'error') => void;
     onRefresh: () => void;
 }
 
-export default function TimelineView({ showNotification, onRefresh }: TimelineViewProps) {
+export default function TimelineView({ onRefresh }: TimelineViewProps) {
     const [activities, setActivities] = useState<Activity[]>([]);
     const [loading, setLoading] = useState(true);
-    const [notes, setNotes] = useState<string | null>(null);
-    const [showNotesModal, setShowNotesModal] = useState(false);
+    const [deleteDialog, setDeleteDialog] = useState<{
+        isOpen: boolean;
+        activity: Activity | null;
+    }>({ isOpen: false, activity: null });
 
     const fetchActivities = useCallback(async () => {
         try {
@@ -32,19 +33,36 @@ export default function TimelineView({ showNotification, onRefresh }: TimelineVi
         return () => clearInterval(interval);
     }, [fetchActivities]);
 
-    const handleOpenNotesModal = () => {
-        setShowNotesModal(true);
-    };
-
-    const handleNotesGenerated = (generatedNotes: string, sessionCount: number) => {
-        setNotes(generatedNotes);
-        showNotification(`✅ Notes generated from ${sessionCount} session(s)`, 'success');
-    };
-
     const handleRefresh = () => {
         setLoading(true);
         fetchActivities();
         onRefresh();
+    };
+
+    const handleDeleteClick = (activity: Activity) => {
+        setDeleteDialog({ isOpen: true, activity });
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!deleteDialog.activity?.session_id) {
+            setDeleteDialog({ isOpen: false, activity: null });
+            return;
+        }
+
+        try {
+            await api.deleteSession(deleteDialog.activity.session_id);
+            setDeleteDialog({ isOpen: false, activity: null });
+            // Refresh activities after deletion
+            fetchActivities();
+            onRefresh();
+        } catch (error) {
+            console.error('Failed to delete activity:', error);
+            setDeleteDialog({ isOpen: false, activity: null });
+        }
+    };
+
+    const handleCancelDelete = () => {
+        setDeleteDialog({ isOpen: false, activity: null });
     };
 
     const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -96,45 +114,6 @@ export default function TimelineView({ showNotification, onRefresh }: TimelineVi
                 </div>
             </div>
 
-            {/* Notes Generation Section */}
-            <div className="glass rounded-xl p-5 mb-6">
-                <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 gradient-purple rounded-lg flex items-center justify-center">
-                            <Sparkles className="w-4 h-4 text-white" />
-                        </div>
-                        <div>
-                            <h3 className="font-medium text-white">Notes Generation</h3>
-                            <p className="text-xs text-gray-500">Generate notes from processed activities</p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={handleOpenNotesModal}
-                        className="btn-primary text-sm"
-                    >
-                        <Sparkles className="w-4 h-4" />
-                        Generate Notes
-                    </button>
-                </div>
-
-                <div className="text-sm text-gray-400 leading-relaxed">
-                    {notes ? (
-                        <div
-                            className="prose prose-invert prose-sm max-w-none"
-                            dangerouslySetInnerHTML={{
-                                __html: notes
-                                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                                    .replace(/- (.*?)(?=\n|$)/g, '<li>$1</li>')
-                                    .replace(/\n/g, '<br>')
-                            }}
-                        />
-                    ) : (
-                        <p className="italic">Click "Generate Notes" to select activities and create study notes...</p>
-                    )}
-                </div>
-            </div>
-
             {/* Activity Grid */}
             {loading && activities.length === 0 ? (
                 <div className="flex items-center justify-center py-20">
@@ -149,17 +128,25 @@ export default function TimelineView({ showNotification, onRefresh }: TimelineVi
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
                     {activities.map((activity, index) => (
-                        <ActivityCard key={activity.id || index} activity={activity} />
+                        <ActivityCard 
+                            key={activity.id || index} 
+                            activity={activity} 
+                            onDelete={handleDeleteClick}
+                        />
                     ))}
                 </div>
             )}
 
-            {/* Notes Modal */}
-            <NotesModal
-                isOpen={showNotesModal}
-                onClose={() => setShowNotesModal(false)}
-                onNotesGenerated={handleNotesGenerated}
-                showNotification={showNotification}
+            {/* Delete Confirmation Dialog */}
+            <ConfirmDialog
+                isOpen={deleteDialog.isOpen}
+                title="Delete Activity"
+                message={`Are you sure you want to delete "${deleteDialog.activity?.title}"? This will remove all associated data including screenshots, transcripts, and media files.`}
+                confirmLabel="Delete"
+                cancelLabel="Cancel"
+                onConfirm={handleConfirmDelete}
+                onCancel={handleCancelDelete}
+                destructive
             />
         </div>
     );

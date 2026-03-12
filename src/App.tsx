@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import TimelineView from './components/TimelineView';
+import NotesView from './components/NotesView';
 import SettingsView from './components/SettingsView';
 import ControlPanel from './components/ControlPanel';
 import Notification from './components/Notification';
@@ -166,8 +167,15 @@ function App() {
                                 path="/"
                                 element={
                                     <TimelineView
-                                        showNotification={showNotification}
                                         onRefresh={fetchStatus}
+                                    />
+                                }
+                            />
+                            <Route
+                                path="/notes"
+                                element={
+                                    <NotesView
+                                        showNotification={showNotification}
                                     />
                                 }
                             />

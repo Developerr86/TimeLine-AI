@@ -2,20 +2,16 @@ import { NavLink } from 'react-router-dom';
 import {
     LayoutDashboard,
     Settings,
-    BarChart3,
-    Calendar,
-    Info,
+    FileText,
     Sparkles,
     MessageSquare
 } from 'lucide-react';
 
 const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Timeline' },
+    { to: '/notes', icon: FileText, label: 'Notes' },
     { to: '/chat', icon: MessageSquare, label: 'Chat' },
-    { to: '#', icon: BarChart3, label: 'Analytics', disabled: true },
-    { to: '#', icon: Calendar, label: 'Calendar', disabled: true },
     { to: '/settings', icon: Settings, label: 'Settings' },
-    { to: '#', icon: Info, label: 'Info', disabled: true },
 ];
 
 export default function Sidebar() {
@@ -35,19 +31,15 @@ export default function Sidebar() {
                         key={item.label}
                         to={item.to}
                         className={({ isActive }) =>
-                            `w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-200 no-drag ${item.disabled
-                                ? 'opacity-40 cursor-not-allowed'
-                                : isActive
+                            `w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-200 no-drag ${
+                                isActive
                                     ? 'glass-light shadow-lg'
                                     : 'hover:glass-light'
                             }`
                         }
-                        onClick={(e) => item.disabled && e.preventDefault()}
                         title={item.label}
                     >
-                        <item.icon
-                            className={`w-5 h-5 ${item.disabled ? 'text-gray-500' : 'text-gray-300'}`}
-                        />
+                        <item.icon className="w-5 h-5 text-gray-300" />
                     </NavLink>
                 ))}
             </nav>

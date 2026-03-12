@@ -279,7 +279,12 @@ class ApiService {
     async uploadImage(file: File): Promise<{
         status: string;
         title?: string;
+        description?: string;
         summary?: string;
+        educational?: string;
+        image_path?: string;
+        session_id?: string;
+        type?: string;
         message?: string;
     }> {
         const formData = new FormData();
@@ -291,6 +296,10 @@ class ApiService {
         });
 
         return response.json();
+    }
+
+    async deleteSession(sessionId: string): Promise<{ status: string; message?: string }> {
+        return this.request(`/api/sessions/${sessionId}`, { method: 'DELETE' });
     }
 
     async clearContext(): Promise<{ status: string; message?: string }> {
