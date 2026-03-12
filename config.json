@@ -9,6 +9,6 @@
   "Apple_FastVLM": "http://localhost:5001/predict",
   "notes_history_limit": 5,
   "notes_model_provider": "ollama",
-  "notes_ollama_model": "phi3:3.8b",
+  "notes_ollama_model": "qwen3.5:2b",
   "audio_library": "pyaudiowpatch"
 }

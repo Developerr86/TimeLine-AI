@@ -1,5 +1,12 @@
 const API_BASE = 'http://localhost:5000';
 
+export type StreamEvent = 
+    | { type: 'status'; message: string }
+    | { type: 'image'; url: string }
+    | { type: 'token'; text: string }
+    | { type: 'complete'; result: any }
+    | { type: 'error'; message: string };
+
 export interface Activity {
     id?: number;
     timestamp: string;
@@ -335,6 +342,96 @@ class ApiService {
             method: 'POST',
             body: JSON.stringify({ frame_indices: frameIndices }),
         });
+    }
+
+    async analyzeContactSheetsStream(
+        sessionId: string,
+        onEvent: (event: StreamEvent) => void
+    ): Promise<void> {
+        const response = await fetch(`${this.baseUrl}/api/session/${sessionId}/analyze_contact_sheets?stream=true`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+        }
+
+        if (!response.body) throw new Error("ReadableStream not yet supported in this browser.");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            
+            const lines = buffer.split('\n\n');
+            buffer = lines.pop() || "";
+            
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const dataStr = line.substring(6).trim();
+                        if (dataStr) {
+                            const event = JSON.parse(dataStr) as StreamEvent;
+                            onEvent(event);
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse SSE line:", line, e);
+                    }
+                }
+            }
+        }
+    }
+
+    async processVideoFramesStream(
+        sessionId: string,
+        frameIndices: number[] | undefined,
+        onEvent: (event: StreamEvent) => void
+    ): Promise<void> {
+        const response = await fetch(`${this.baseUrl}/api/session/${sessionId}/process_frames?stream=true`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ frame_indices: frameIndices }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+        }
+
+        if (!response.body) throw new Error("ReadableStream not yet supported in this browser.");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            
+            const lines = buffer.split('\n\n');
+            buffer = lines.pop() || "";
+            
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const dataStr = line.substring(6).trim();
+                        if (dataStr) {
+                            const event = JSON.parse(dataStr) as StreamEvent;
+                            onEvent(event);
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse SSE line:", line, e);
+                    }
+                }
+            }
+        }
     }
 
     async getFrameData(sessionId: string): Promise<{

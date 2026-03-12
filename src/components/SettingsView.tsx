@@ -18,7 +18,7 @@ export default function SettingsView({ showNotification }: SettingsViewProps) {
         similarity_threshold: 0.95,
         notes_history_limit: 5,
         notes_model_provider: 'gemini',
-        notes_ollama_model: 'phi3:3.8b',
+        notes_ollama_model: 'qwen3.5:2b',
         audio_library: 'pyaudiowpatch',
     });
     const [loading, setLoading] = useState(true);

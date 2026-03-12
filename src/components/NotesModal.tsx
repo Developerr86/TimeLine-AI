@@ -30,7 +30,7 @@ interface ContactSheetSelection {
 interface LogEntry {
     timestamp: Date;
     message: string;
-    type: 'info' | 'success' | 'error' | 'processing';
+    type: 'info' | 'success' | 'error' | 'processing' | 'token_stream';
 }
 
 export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNotification }: NotesModalProps) {
@@ -39,6 +39,7 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
     const [currentStep, setCurrentStep] = useState<ProgressStep>('idle');
+    const [currentProcessingImage, setCurrentProcessingImage] = useState<string | null>(null);
     const [progress, setProgress] = useState({ current: 0, total: 0, message: '' });
     const [videoSessionCount, setVideoSessionCount] = useState(0);
     const [skipFrameProcessing, setSkipFrameProcessing] = useState(false);
@@ -195,10 +196,33 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
 
             try {
                 addLog(`Processing ${selectedFrames.length} frames for: ${session.title || 'Untitled'}`, 'processing');
-                await api.processVideoFrames(session.id, selectedFrames);
+                
+                await api.processVideoFramesStream(session.id, selectedFrames, (event) => {
+                    if (event.type === 'status') {
+                        addLog(event.message, 'processing');
+                        setProgress(prev => ({ ...prev, message: event.message }));
+                    } else if (event.type === 'image') {
+                        setCurrentProcessingImage(event.url);
+                    } else if (event.type === 'token') {
+                        setLogs(prev => {
+                            const newLogs = [...prev];
+                            if (newLogs.length > 0 && newLogs[newLogs.length - 1].type === 'token_stream') {
+                                newLogs[newLogs.length - 1].message += event.text;
+                            } else {
+                                newLogs.push({ timestamp: new Date(), message: event.text, type: 'token_stream' });
+                            }
+                            return newLogs;
+                        });
+                    } else if (event.type === 'error') {
+                        addLog(`Stream error: ${event.message}`, 'error');
+                    }
+                });
+                
+                setCurrentProcessingImage(null);
                 addLog(`Frames processed successfully for: ${session.title || 'Untitled'}`, 'success');
             } catch (error) {
                 addLog(`Failed to process frames: ${error}`, 'error');
+                setCurrentProcessingImage(null);
             }
         }
 
@@ -287,9 +311,34 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
                 addLog(`Analyzing contact sheets for: ${session.title || 'Untitled'}`, 'processing');
 
                 try {
-                    const result = await api.analyzeContactSheets(session.id);
+                    let finalResult: any = null;
+                    await api.analyzeContactSheetsStream(session.id, (event) => {
+                        if (event.type === 'status') {
+                            addLog(event.message, 'processing');
+                            setProgress(prev => ({ ...prev, message: event.message }));
+                        } else if (event.type === 'image') {
+                            setCurrentProcessingImage(event.url);
+                        } else if (event.type === 'token') {
+                            setLogs(prev => {
+                                const newLogs = [...prev];
+                                if (newLogs.length > 0 && newLogs[newLogs.length - 1].type === 'token_stream') {
+                                    newLogs[newLogs.length - 1].message += event.text;
+                                } else {
+                                    newLogs.push({ timestamp: new Date(), message: event.text, type: 'token_stream' });
+                                }
+                                return newLogs;
+                            });
+                        } else if (event.type === 'complete') {
+                            finalResult = event.result;
+                        } else if (event.type === 'error') {
+                            addLog(`Stream error: ${event.message}`, 'error');
+                        }
+                    });
                     
-                    if (result.selected_indices && result.selected_indices.length > 0) {
+                    setCurrentProcessingImage(null);
+                    const result = finalResult;
+                    
+                    if (result && result.selected_indices && result.selected_indices.length > 0) {
                         // AI selected some frames - convert to batch selections
                         const totalBatches = Math.ceil(result.total_frames / 16);
                         addLog(`AI suggested ${result.selected_indices.length} frames (Batch ${i + 1}/${videoSessions.length})`, 'success');
@@ -299,8 +348,8 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
                             const batchStart = batch * 16 + 1;
                             const batchEnd = Math.min((batch + 1) * 16, result.total_frames);
                             const batchIndices = result.selected_indices.filter(
-                                idx => idx >= batchStart && idx <= batchEnd
-                            ).map(idx => idx - batchStart);
+                                (idx: number) => idx >= batchStart && idx <= batchEnd
+                            ).map((idx: number) => idx - batchStart);
                             
                             selections.push({
                                 sessionId: session.id,
@@ -313,7 +362,7 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
                         }
                     } else {
                         // AI selected none - show all batches to user
-                        const totalBatches = Math.ceil(result.total_frames / 16);
+                        const totalBatches = Math.ceil((result?.total_frames || 1) / 16);
                         addLog(`AI found no relevant frames for: ${session.title || 'Untitled'} - please select manually`, 'info');
                         
                         for (let batch = 0; batch < totalBatches; batch++) {
@@ -329,6 +378,7 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
                     }
                 } catch (error) {
                     addLog(`Error analyzing contact sheets: ${error}`, 'error');
+                    setCurrentProcessingImage(null);
                 }
             }
 
@@ -469,9 +519,10 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
                                     log.type === 'error' ? 'text-red-400' :
                                     log.type === 'success' ? 'text-green-400' :
                                     log.type === 'processing' ? 'text-yellow-400' :
+                                    log.type === 'token_stream' ? 'text-blue-300 whitespace-pre-wrap font-sans opacity-80' :
                                     'text-gray-400'
                                 }`}>
-                                    <span className="text-gray-600">[{log.timestamp.toLocaleTimeString()}]</span> {log.message}
+                                    {log.type !== 'token_stream' && <span className="text-gray-600">[{log.timestamp.toLocaleTimeString()}]</span>} {log.message}
                                 </div>
                             ))}
                         </div>
@@ -575,9 +626,15 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
                         </div>
                     ) : generating ? (
                         <div className="flex flex-col items-center justify-center py-12">
-                            <div className="w-16 h-16 mb-4 rounded-full bg-purple-500/20 flex items-center justify-center">
-                                <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
-                            </div>
+                            {currentProcessingImage ? (
+                                <div className="mb-6 rounded-xl overflow-hidden border border-white/10 shadow-lg max-w-sm">
+                                    <img src={currentProcessingImage} alt="Currently processing" className="w-full h-auto object-cover" />
+                                </div>
+                            ) : (
+                                <div className="w-16 h-16 mb-4 rounded-full bg-purple-500/20 flex items-center justify-center">
+                                    <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+                                </div>
+                            )}
                             <h3 className="text-lg font-medium text-white mb-2">
                                 {currentStep === 'analyzing_contact_sheets' && 'Analyzing Video Frames'}
                                 {currentStep === 'processing_frames' && 'Processing Selected Frames'}

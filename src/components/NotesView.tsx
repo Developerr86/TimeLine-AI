@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Sparkles, RefreshCw, FileText, Video, Globe, Trash2, Copy, Check, Download, BookOpen } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import NotesModal from './NotesModal';
 import ConfirmDialog from './ConfirmDialog';
 import { api, ProcessedSession } from '../services/api';
@@ -141,14 +143,6 @@ export default function NotesView({ showNotification }: NotesViewProps) {
         });
     };
 
-    const renderNotes = (notesContent: string) => {
-        return notesContent
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/- (.*?)(?=\n|$)/g, '<li>$1</li>')
-            .replace(/\n/g, '<br>');
-    };
-
     const indexedSessions = sessions.filter(s => s.indexed);
 
     return (
@@ -288,12 +282,11 @@ export default function NotesView({ showNotification }: NotesViewProps) {
                                 <div className="text-xs text-gray-500 mb-4">
                                     Created: {formatDate(activeNote.created_at)}
                                 </div>
-                                <div 
-                                    className="prose prose-invert prose-sm max-w-none bg-white/5 rounded-xl p-4 border border-white/10 overflow-y-auto max-h-[60vh]"
-                                    dangerouslySetInnerHTML={{
-                                        __html: renderNotes(activeNote.content)
-                                    }}
-                                />
+                                <div className="prose prose-invert prose-sm max-w-none bg-white/5 rounded-xl p-4 border border-white/10 overflow-y-auto max-h-[60vh] text-left">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {activeNote.content}
+                                    </ReactMarkdown>
+                                </div>
                             </div>
                         ) : (
                             <div className="glass rounded-xl p-8 text-center h-full flex flex-col items-center justify-center">

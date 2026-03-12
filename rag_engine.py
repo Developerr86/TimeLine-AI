@@ -64,7 +64,7 @@ class RAGEngine:
     TOP_K = 5                  # Number of chunks to retrieve
     MAX_CONTEXT_TOKENS = 1500  # Maximum context for LLM prompt
     
-    def __init__(self, ollama_model: str = "phi3:3.8b"):
+    def __init__(self, ollama_model: str = "qwen3.5:2b"):
         """
         Initialize the RAG engine.
         
@@ -761,7 +761,7 @@ Generate comprehensive study notes from this content."""
 _rag_engine: Optional[RAGEngine] = None
 
 
-def get_rag_engine(ollama_model: str = "phi3:3.8b") -> RAGEngine:
+def get_rag_engine(ollama_model: str = "qwen3.5:2b") -> RAGEngine:
     """Get or create the singleton RAG engine instance."""
     global _rag_engine
     if _rag_engine is None:

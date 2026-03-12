@@ -166,6 +166,22 @@ The project follows a **"Sidecar" Microservices Architecture** wrapped in a Desk
     * `DELETE /api/notes/<id>` - Delete note
     * `GET /api/notes/<id>/download` - Download note as markdown
 
+### **Phase 11: UI Streaming & Rendering Polish (Completed)**
+* [x] **Real-time AI Streaming (Server-Sent Events):**
+    * Refactored `/api/session/<id>/analyze_contact_sheets` and `process_frames` APIs to yield JSON streams (SSE) when `stream=true` is requested.
+    * Streams live status updates, the URL of the image currently being processed, and raw text generation tokens from the local Ollama model.
+* [x] **Frontend SSE Consumers:**
+    * Added `analyzeContactSheetsStream` and `processVideoFramesStream` using native Fetch `ReadableStream` line-by-line parsing in `api.ts`.
+* [x] **NotesModal UI Transparency:**
+    * UI natively previews the current image (contact sheet or video frame) being analyzed.
+    * New `token_stream` log type progressively appends LLM text chunks for a typewriter effect.
+* [x] **Markdown Notes Formatting:**
+    * Replaced manual regex parsing with `react-markdown` and `remark-gfm` in `NotesView.tsx`.
+    * Added `@tailwindcss/typography` plugin to apply clean, dark-mode-compatible styles (`.prose`, `.prose-invert`) to generated notes, fixing unformatted tables and text walls.
+* [x] **Quality of Life & Bug Fixes:**
+    * Changed default notes Ollama model to `qwen3.5:2b`.
+    * Fixed runtime crash (`Cannot set properties of null (setting 'innerHTML')`) in `ActivityCard.tsx` by replacing direct DOM manipulation with standard React state.
+    * Removed unused variables (`isDocSession`, `isWebSession`) in `ScenarioDetailsView`.
 ---
 
 ## 5. API Endpoints

@@ -147,8 +147,6 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
     const { transcriber_status } = session;
     const isActive = session.is_active;
     const sessionType = session.session.type;
-    const isDocSession = sessionType === 'DOC';
-    const isWebSession = sessionType === 'WEB';
     const isVideoSession = sessionType === 'VIDEO';
     const isImgSession = sessionType === 'IMG';
     const transcriptLabel = isImgSession ? 'Description' : 'Transcript';

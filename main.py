@@ -5,7 +5,7 @@ This is the main entry point for the Python backend.
 It provides REST API endpoints for the Electron frontend.
 """
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 import os
 import uuid
@@ -713,172 +713,178 @@ def analyze_contact_sheets(session_id):
     gemini_model = config.get('gemini_model', 'gemini-2.5-pro')
     remote_url = config.get('remote_url', 'http://localhost:5001/prompt')
     
-    # Analyze each contact sheet
-    all_selected_indices = []
-    
-    print(f"🔍 Analyzing {len(contact_sheets)} contact sheets...")
-    
-    def encode_image_to_base64(image_path):
-        import base64
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode('utf-8')
-    
-    contact_sheet_prompt = """
-I am showing you 16 thumbnails from a lecture/video. 
-Tell me the indices (1-16) of the frames that might contain text, graphs, diagrams, 
-slides, code, or any other educationally useful information.
-Ignore frames that show blank screens, loading screens, or non-educational content.
+    stream = request.args.get('stream', 'false').lower() == 'true'
 
-Respond with ONLY a valid JSON object containing an array of indices:
-{"selected_indices": [3, 8, 12, 15]}
-
-If NO frames appear to contain educational content, respond with:
-{"selected_indices": []}
-"""
+    stream = request.args.get('stream', 'false').lower() == 'true'
     
-    for idx, contact_sheet_path in enumerate(contact_sheets):
-        print(f"  📊 Analyzing contact sheet {idx + 1}/{len(contact_sheets)}...")
+    def process_generator():
+        def encode_image_to_base64(image_path):
+            import base64
+            with open(image_path, "rb") as image_file:
+                return base64.b64encode(image_file.read()).decode('utf-8')
         
-        try:
-            base64_image = encode_image_to_base64(contact_sheet_path)
-            raw_response = ""
+        frame_prompt = """
+Analyze this video frame carefully and provide:
+1. A brief description (1-2 sentences) of what this frame shows
+2. Whether it contains text, diagrams, slides, code, or educational content
+
+Respond with ONLY a valid JSON:
+{"description": "Brief description of the frame content", "educational": "yes/no"}
+"""
+        
+        descriptions = []
+        frame_data_lines = []
+        
+        print(f"🖼️ Processing {len(frame_indices)} frames for session {session_id}")
+        if stream:
+            yield f"data: {json.dumps({'type': 'status', 'message': f'Processing {len(frame_indices)} frames'})}\n\n"
+        
+        # Create a mapping of frame index to file
+        frame_file_map = {}
+        for f in frame_files:
+            idx = get_frame_index_from_filename(f.name)
+            frame_file_map[idx] = f
+        
+        for i, frame_idx in enumerate(frame_indices):
+            frame_file = frame_file_map.get(frame_idx)
             
-            if model_type == 'ollama':
-                import ollama
-                client = ollama.Client()
-                response = client.chat(
-                    model=ollama_model,
-                    messages=[
-                        {
-                            'role': 'user',
-                            'content': contact_sheet_prompt,
-                            'images': [base64_image]
-                        }
-                    ],
-                    options={"think": False}
-                )
-                raw_response = response['message']['content']
-                
-            elif model_type == 'gemini':
-                import google.generativeai as genai
-                
-                if not config.get('gemini_api_key'):
-                    return jsonify({'status': 'error', 'message': 'Gemini API key not configured'}), 500
-                
-                genai.configure(api_key=config.get('gemini_api_key'))
-                model = genai.GenerativeModel(gemini_model)
-                
-                with open(contact_sheet_path, 'rb') as image_file:
-                    image_data = image_file.read()
-                
-                response = model.generate_content([contact_sheet_prompt, {"mime_type": "image/jpeg", "data": image_data}])
-                raw_response = response.text
-                
-            elif model_type == 'remote':
-                import requests
-                
-                with open(contact_sheet_path, 'rb') as img_file:
-                    files = {'image': img_file}
-                    data = {'prompt': contact_sheet_prompt}
-                    response = requests.post(remote_url, files=files, data=data)
-                    
-                    if response.status_code == 200:
-                        response_json = response.json()
-                        raw_response = response_json.get('response', '')
-                    else:
-                        print(f"  ⚠️ Remote server error: {response.status_code}")
-                        continue
-            else:
+            if not frame_file:
+                print(f"  ⚠️ Frame {frame_idx} not found, skipping")
                 continue
             
-            # Parse JSON response
-            if raw_response.strip().startswith("```json"):
-                json_str = raw_response.strip()[7:-3].strip()
-            elif raw_response.strip().startswith("```"):
-                lines = raw_response.strip().split('\n')
-                json_str = '\n'.join(lines[1:-1]).strip()
-            else:
-                json_str = raw_response
+            timestamp = extract_timestamp_from_filename(frame_file.name)
+            if not timestamp:
+                timestamp = f"00:{frame_idx // 60:02d}:{frame_idx % 60:02d}"
+            
+            print(f"  📷 Processing frame {frame_idx} ({i+1}/{len(frame_indices)}) - {timestamp}")
+            if stream:
+                img_url = f"/api/media/video/{session_id}/frames/{frame_file.name}"
+                yield f"data: {json.dumps({'type': 'image', 'url': img_url})}\n\n"
             
             try:
-                data = json.loads(json_str)
-                indices = data.get("selected_indices", [])
+                base64_image = encode_image_to_base64(frame_file)
+                raw_response = ""
                 
-                # Convert 1-based indices to 0-based, and add offset for batch
-                batch_offset = idx * 16
-                for i in indices:
-                    if 1 <= i <= 16:
-                        all_selected_indices.append(batch_offset + i)
+                if model_type == 'ollama':
+                    import ollama
+                    client = ollama.Client()
+                    if stream:
+                        response_stream = client.chat(
+                            model=ollama_model,
+                            messages=[{'role': 'user', 'content': frame_prompt, 'images': [base64_image]}],
+                            options={"think": False},
+                            stream=True
+                        )
+                        for chunk in response_stream:
+                            token = chunk['message']['content']
+                            raw_response += token
+                            yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
+                    else:
+                        response = client.chat(
+                            model=ollama_model,
+                            messages=[{'role': 'user', 'content': frame_prompt, 'images': [base64_image]}],
+                            options={"think": False}
+                        )
+                        raw_response = response['message']['content']
+                        
+                elif model_type == 'gemini':
+                    import google.generativeai as genai
+                    if not config.get('gemini_api_key'):
+                        if stream:
+                            yield f"data: {json.dumps({'type': 'error', 'message': 'Gemini API key not configured'})}\n\n"
+                        continue
+                    
+                    genai.configure(api_key=config.get('gemini_api_key'))
+                    model = genai.GenerativeModel(gemini_model)
+                    with open(frame_file, 'rb') as image_file:
+                        image_data = image_file.read()
+                    response = model.generate_content([frame_prompt, {"mime_type": "image/jpeg", "data": image_data}])
+                    raw_response = response.text
+                    
+                elif model_type == 'remote':
+                    import requests
+                    with open(frame_file, 'rb') as img_file:
+                        files = {'image': img_file}
+                        data_p = {'prompt': frame_prompt}
+                        response = requests.post(remote_url, files=files, data=data_p)
+                        if response.status_code == 200:
+                            response_json = response.json()
+                            raw_response = response_json.get('response', '')
+                        else:
+                            continue
+                else:
+                    continue
                 
-                print(f"    ✓ Selected indices from this sheet: {indices}")
+                # Parse JSON
+                if raw_response.strip().startswith("```json"):
+                    json_str = raw_response.strip()[7:-3].strip()
+                elif raw_response.strip().startswith("```"):
+                    lines = raw_response.strip().split('\n')
+                    json_str = '\n'.join(lines[1:-1]).strip()
+                else:
+                    json_str = raw_response
                 
-            except json.JSONDecodeError:
-                print(f"  ⚠️ Failed to parse contact sheet response")
+                try:
+                    frame_data = json.loads(json_str)
+                    description = frame_data.get("description", "No description")
+                    descriptions.append({"frame": frame_idx, "timestamp": timestamp, "description": description})
+                    frame_data_lines.append(f"[{timestamp}] Frame {frame_idx}: {description}")
+                except json.JSONDecodeError:
+                    descriptions.append({"frame": frame_idx, "timestamp": timestamp, "description": raw_response[:200] if raw_response else "Failed to parse"})
+                    frame_data_lines.append(f"[{timestamp}] Frame {frame_idx}: {raw_response[:200]}")
+                    
+            except Exception as e:
+                print(f"  ⚠️ Error processing frame {frame_idx}: {e}")
+                if stream:
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        
+        # Write frame data to file
+        try:
+            with open(frame_data_file, 'w', encoding='utf-8') as f:
+                f.write("=== Video Frame Analysis ===\n\n")
+                f.write("\n".join(frame_data_lines))
+            print(f"  ✅ Frame data saved to: {frame_data_file}")
+            
+            db = get_db()
+            try:
+                frame_data_text = "\n".join(frame_data_lines)
+                text_record = CapturedText(
+                    session_id=session_id,
+                    content=frame_data_text,
+                    content_type="frame_data"
+                )
+                db.add(text_record)
+                db.commit()
+            except Exception as e:
+                print(f"  ⚠️ Failed to save frame data to database: {e}")
+            finally:
+                db.close()
                 
         except Exception as e:
-            print(f"  ⚠️ Error analyzing contact sheet {idx}: {e}")
-    
-    # Handle case where no frames selected - fallback to all frames
-    if not all_selected_indices:
-        print("  ⚠️ No educational frames selected, falling back to all frames")
-        # Use all frame indices
-        all_selected_indices = list(range(1, total_frames + 1))
-        use_fallback = True
+            print(f"  ⚠️ Failed to save frame data: {e}")
+            
+        final_result = {
+            'status': 'success',
+            'frames_processed': len(descriptions),
+            'frame_data_file': "frame_data.txt",
+            'descriptions': descriptions
+        }
+        yield f"data: {json.dumps({'type': 'complete', 'result': final_result})}\n\n"
+
+    if stream:
+        return Response(stream_with_context(process_generator()), mimetype='text/event-stream')
     else:
-        use_fallback = False
-    
-    print(f"  ✅ Total selected frames: {len(all_selected_indices)}")
-    
-    return jsonify({
-        'status': 'success',
-        'selected_indices': sorted(all_selected_indices),
-        'contact_sheets_created': len(contact_sheets),
-        'contact_sheets_analyzed': len(contact_sheets),
-        'total_frames': total_frames,
-        'fallback_used': use_fallback
-    })
-
-
-@app.route('/api/session/<session_id>/process_frames', methods=['POST'])
-def process_video_frames(session_id):
-    """
-    Process selected video frames with the vision model to generate frame descriptions.
-    
-    Request body (optional):
-        {
-            "frame_indices": [3, 8, 12, 15]  # Specific frames to process, or None for all
-        }
-    
-    Returns:
-        {
-            "status": "success",
-            "frames_processed": 12,
-            "frame_data_file": "frame_data.txt",
-            "descriptions": [
-                {"frame": 3, "timestamp": "00:02:15", "description": "..."},
-                {"frame": 8, "timestamp": "00:05:32", "description": "..."}
-            ]
-        }
-    """
-    from models import MEDIA_VIDEO_DIR, CaptureSession, SessionType, CapturedText
-    from scenarios.contact_sheet import extract_timestamp_from_filename, get_frame_index_from_filename
-    import os
-    import json
-    
-    data = request.get_json() or {}
-    frame_indices = data.get('frame_indices')  # Optional: specific frames to process
-    
-    # Verify session exists and is VIDEO type
-    db = get_db()
-    try:
-        session = db.query(CaptureSession).filter_by(id=session_id).first()
-        if not session:
-            return jsonify({'status': 'error', 'message': 'Session not found'}), 404
-        
-        if session.type != SessionType.VIDEO:
-            return jsonify({'status': 'error', 'message': 'Session is not a VIDEO session'}), 400
-    finally:
-        db.close()
+        for chunk in process_generator():
+            if chunk.startswith('data: '):
+                try:
+                    data = json.loads(chunk[6:].strip())
+                    if data.get('type') == 'complete':
+                        return jsonify(data['result'])
+                    elif data.get('type') == 'error':
+                        return jsonify({'status': 'error', 'message': data['message']}), 500
+                except:
+                    pass
+        return jsonify({'status': 'error', 'message': 'Stream ended without completion'})
     
     frames_dir = MEDIA_VIDEO_DIR / session_id / "frames"
     output_dir = MEDIA_VIDEO_DIR / session_id
@@ -2025,7 +2031,7 @@ DEFAULT_CONFIG = {
     "similarity_threshold": 0.95,
     "notes_history_limit": 5,
     "notes_model_provider": "gemini",
-    "notes_ollama_model": "phi3:3.8b",
+    "notes_ollama_model": "qwen3.5:2b",
     "enabled": False
 }
 
@@ -2066,7 +2072,7 @@ def api_config():
         config['similarity_threshold'] = float(data.get('similarity_threshold', 0.95))
         config['notes_history_limit'] = int(data.get('notes_history_limit', 5))
         config['notes_model_provider'] = data.get('notes_model_provider', 'gemini')
-        config['notes_ollama_model'] = data.get('notes_ollama_model', 'phi3:3.8b')
+        config['notes_ollama_model'] = data.get('notes_ollama_model', 'qwen3.5:2b')
         
         save_config(config)
         return jsonify({'status': 'success', 'config': config})

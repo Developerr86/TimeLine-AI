@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, Activity } from '../services/api';
 import {
@@ -49,6 +50,7 @@ function formatTime(timestamp: string): string {
 
 export default function ActivityCard({ activity, onDelete }: ActivityCardProps) {
     const navigate = useNavigate();
+    const [imageError, setImageError] = useState(false);
     const { icon: IconComponent, color } = getActivityIcon(activity.title);
     const screenshotUrl = activity.image_path ? api.getScreenshotUrl(activity.image_path) : null;
     const hasSession = !!activity.session_id;
@@ -100,19 +102,18 @@ export default function ActivityCard({ activity, onDelete }: ActivityCardProps) 
             {/* Screenshot Preview */}
             {activity.image_path && (
                 <div className="h-48 bg-black/30 overflow-hidden">
-                    <img
-                        src={screenshotUrl || undefined}
-                        alt="Screenshot"
-                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                        onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.parentElement!.innerHTML = `
-                <div class="w-full h-full flex items-center justify-center text-gray-500">
-                  <span>📸 Screenshot unavailable</span>
-                </div>
-              `;
-                        }}
-                    />
+                    {!imageError ? (
+                        <img
+                            src={screenshotUrl || undefined}
+                            alt="Screenshot"
+                            className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                            onError={() => setImageError(true)}
+                        />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-500">
+                            <span>📸 Screenshot unavailable</span>
+                        </div>
+                    )}
                 </div>
             )}
 
