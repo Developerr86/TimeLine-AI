@@ -192,6 +192,7 @@ MEDIA_BASE_DIR = Path(__file__).parent / "media"
 MEDIA_WEB_DIR = MEDIA_BASE_DIR / "web"
 MEDIA_DOCS_DIR = MEDIA_BASE_DIR / "docs"
 MEDIA_VIDEO_DIR = MEDIA_BASE_DIR / "video"
+MEDIA_NOTES_DIR = MEDIA_BASE_DIR / "notes"
 
 
 def ensure_media_dirs():
@@ -200,7 +201,35 @@ def ensure_media_dirs():
     MEDIA_WEB_DIR.mkdir(exist_ok=True)
     MEDIA_DOCS_DIR.mkdir(exist_ok=True)
     MEDIA_VIDEO_DIR.mkdir(exist_ok=True)
+    MEDIA_NOTES_DIR.mkdir(exist_ok=True)
     print(f"✅ Media directories initialized at {MEDIA_BASE_DIR}")
+
+
+class GeneratedNote(Base):
+    """
+    Represents a generated note from multiple sessions.
+    """
+    __tablename__ = "generated_notes"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    title = Column(String(500), nullable=False)
+    content = Column(Text, nullable=False)
+    session_ids = Column(Text, nullable=True)  # JSON array of session IDs
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<GeneratedNote(id={self.id}, title={self.title[:30]}...)>"
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "content": self.content,
+            "session_ids": self.session_ids,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
 
 
 if __name__ == "__main__":

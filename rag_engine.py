@@ -36,6 +36,9 @@ except ImportError:
 # Vector store directory
 VECTOR_STORE_DIR = Path(__file__).parent / "media" / "vector_store"
 
+# Media directories for frame data
+MEDIA_VIDEO_DIR = Path(__file__).parent / "media" / "video"
+
 
 class RAGEngine:
     """
@@ -610,13 +613,14 @@ Question: {user_query}"""
         
         return result
     
-    def generate_notes(self, session_ids: List[str], ollama_model: str = None) -> Dict[str, Any]:
+    def generate_notes(self, session_ids: List[str], ollama_model: str = None, skip_frames: bool = False) -> Dict[str, Any]:
         """
         Generate structured notes from chunks of specified sessions.
         
         Args:
             session_ids: List of session IDs to generate notes from
             ollama_model: Optional Ollama model to use (defaults to instance model)
+            skip_frames: If True, skip frame data and use only transcript
             
         Returns:
             Dict with generated notes and metadata
@@ -652,11 +656,41 @@ Question: {user_query}"""
             total_tokens = 0
             session_titles = {}
             
+            # Check for VIDEO sessions and include frame data (unless skipped)
+            frame_data_parts = []
+            
+            if not skip_frames:
+                for session_id in session_ids:
+                    # Check if this is a VIDEO session by looking for frame_data.txt
+                    session_frame_data_file = MEDIA_VIDEO_DIR / session_id / "frame_data.txt"
+                    
+                    if session_frame_data_file.exists():
+                        try:
+                            with open(session_frame_data_file, 'r', encoding='utf-8') as f:
+                                frame_data = f.read()
+                                if frame_data.strip():
+                                    frame_data_parts.append(f"=== Video Frame Analysis ===\n{frame_data}")
+                                    print(f"  📼 Found frame data for session {session_id[:8]}...")
+                        except Exception as e:
+                            print(f"  ⚠️ Could not read frame data for {session_id}: {e}")
+            else:
+                print(f"  ⏭️ Skipping frame data as requested")
+            
+            # Add frame data to context if available
+            if frame_data_parts:
+                print(f"  📼 Including frame data from {len(frame_data_parts)} video session(s)")
+                context_parts.append("\n\n=== VIDEO FRAME ANALYSIS ===\n\n" + "\n\n".join(frame_data_parts))
+            elif skip_frames:
+                print(f"  ⏭️ Skipping frame data, using transcript only")
+            
             for chunk in chunks_result["chunks"]:
                 chunk_tokens = self._estimate_tokens(chunk["text"])
                 
                 # Limit total context to prevent overwhelming the model
-                if total_tokens + chunk_tokens > 4000:  # ~4000 tokens max context
+                # When including frame data, use fewer tokens for transcript
+                max_tokens = 4000 if not frame_data_parts else 3000
+                
+                if total_tokens + chunk_tokens > max_tokens:
                     break
                 
                 context_parts.append(chunk["text"])

@@ -264,11 +264,84 @@ class ApiService {
         return this.request('/api/stop', { method: 'POST' });
     }
 
-    async generateNotes(sessionIds: string[]): Promise<NotesResponse> {
+    async generateNotes(sessionIds: string[], skipFrames: boolean = false): Promise<NotesResponse> {
         return this.request('/api/generate_notes', {
             method: 'POST',
-            body: JSON.stringify({ session_ids: sessionIds }),
+            body: JSON.stringify({ session_ids: sessionIds, skip_frames: skipFrames }),
         });
+    }
+
+    async getNotes(): Promise<{
+        notes: Array<{
+            id: string;
+            title: string;
+            content: string;
+            session_ids: string;
+            created_at: string;
+            updated_at: string;
+        }>;
+        count: number;
+    }> {
+        return this.request('/api/notes');
+    }
+
+    async getNote(noteId: string): Promise<{
+        id: string;
+        title: string;
+        content: string;
+        session_ids: string;
+        created_at: string;
+        updated_at: string;
+    }> {
+        return this.request(`/api/notes/${noteId}`);
+    }
+
+    async deleteNote(noteId: string): Promise<{ status: string; message?: string }> {
+        return this.request(`/api/notes/${noteId}`, { method: 'DELETE' });
+    }
+
+    async downloadNote(noteId: string): Promise<{
+        status: string;
+        content: string;
+        filename: string;
+    }> {
+        return this.request(`/api/notes/${noteId}/download`);
+    }
+
+    async analyzeContactSheets(sessionId: string): Promise<{
+        status: string;
+        selected_indices: number[];
+        contact_sheets_created: number;
+        contact_sheets_analyzed: number;
+        total_frames: number;
+        fallback_used?: boolean;
+    }> {
+        return this.request(`/api/session/${sessionId}/analyze_contact_sheets`, {
+            method: 'POST',
+        });
+    }
+
+    async processVideoFrames(sessionId: string, frameIndices?: number[]): Promise<{
+        status: string;
+        frames_processed: number;
+        frame_data_file: string;
+        descriptions: Array<{
+            frame: number;
+            timestamp: string;
+            description: string;
+        }>;
+    }> {
+        return this.request(`/api/session/${sessionId}/process_frames`, {
+            method: 'POST',
+            body: JSON.stringify({ frame_indices: frameIndices }),
+        });
+    }
+
+    async getFrameData(sessionId: string): Promise<{
+        content: string;
+        exists: boolean;
+    }> {
+        return this.request(`/api/session/${sessionId}/frame_data`);
     }
 
     async getProcessedSessions(): Promise<ProcessedSessionsResponse> {

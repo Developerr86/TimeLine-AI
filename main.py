@@ -639,6 +639,476 @@ def get_session_frames(session_id):
     })
 
 
+# ============================================================================
+# Contact Sheet & Frame Analysis Endpoints
+# ============================================================================
+
+@app.route('/api/session/<session_id>/analyze_contact_sheets', methods=['POST'])
+def analyze_contact_sheets(session_id):
+    """
+    Analyze contact sheets to identify educationally useful frames.
+    
+    Creates 4x4 contact sheets from video frames, then analyzes each
+    to identify which frames contain text, diagrams, or educational content.
+    
+    Returns:
+        {
+            "status": "success",
+            "selected_indices": [3, 8, 12, 15],  # Frame indices (1-based)
+            "contact_sheets_created": 5,
+            "contact_sheets_analyzed": 5,
+            "total_frames": 80
+        }
+    """
+    from models import MEDIA_VIDEO_DIR, CaptureSession, SessionType
+    from scenarios.contact_sheet import create_contact_sheets, extract_timestamp_from_filename, get_frame_index_from_filename
+    import os
+    import json
+    
+    # Verify session exists and is VIDEO type
+    db = get_db()
+    try:
+        session = db.query(CaptureSession).filter_by(id=session_id).first()
+        if not session:
+            return jsonify({'status': 'error', 'message': 'Session not found'}), 404
+        
+        if session.type != SessionType.VIDEO:
+            return jsonify({'status': 'error', 'message': 'Session is not a VIDEO session'}), 400
+    finally:
+        db.close()
+    
+    frames_dir = MEDIA_VIDEO_DIR / session_id / "frames"
+    contact_sheets_dir = MEDIA_VIDEO_DIR / session_id / "contact_sheets"
+    
+    if not frames_dir.exists():
+        return jsonify({'status': 'error', 'message': 'No frames found for this session'}), 400
+    
+    # Get all frame files
+    frame_files = sorted([
+        f for f in frames_dir.iterdir() 
+        if f.suffix.lower() in ['.jpg', '.jpeg', '.png']
+    ])
+    
+    if not frame_files:
+        return jsonify({'status': 'error', 'message': 'No frame files found'}), 400
+    
+    total_frames = len(frame_files)
+    print(f"📸 Processing {total_frames} frames for session {session_id}")
+    
+    # Create contact sheets (or use existing)
+    if contact_sheets_dir.exists() and any(contact_sheets_dir.iterdir()):
+        print(f"  ✓ Using existing contact sheets in {contact_sheets_dir}")
+        contact_sheets = sorted(contact_sheets_dir.glob("contact_sheet_*.jpg"))
+    else:
+        contact_sheets_dir.mkdir(parents=True, exist_ok=True)
+        contact_sheets = create_contact_sheets(frames_dir, contact_sheets_dir, batch_size=16)
+    
+    if not contact_sheets:
+        return jsonify({'status': 'error', 'message': 'Failed to create contact sheets'}), 500
+    
+    # Get config for vision model
+    config = load_config()
+    model_type = config.get('model_type', 'remote')
+    ollama_model = config.get('ollama_model', 'qwen2.5vl:3b')
+    gemini_model = config.get('gemini_model', 'gemini-2.5-pro')
+    remote_url = config.get('remote_url', 'http://localhost:5001/prompt')
+    
+    # Analyze each contact sheet
+    all_selected_indices = []
+    
+    print(f"🔍 Analyzing {len(contact_sheets)} contact sheets...")
+    
+    def encode_image_to_base64(image_path):
+        import base64
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
+    
+    contact_sheet_prompt = """
+I am showing you 16 thumbnails from a lecture/video. 
+Tell me the indices (1-16) of the frames that might contain text, graphs, diagrams, 
+slides, code, or any other educationally useful information.
+Ignore frames that show blank screens, loading screens, or non-educational content.
+
+Respond with ONLY a valid JSON object containing an array of indices:
+{"selected_indices": [3, 8, 12, 15]}
+
+If NO frames appear to contain educational content, respond with:
+{"selected_indices": []}
+"""
+    
+    for idx, contact_sheet_path in enumerate(contact_sheets):
+        print(f"  📊 Analyzing contact sheet {idx + 1}/{len(contact_sheets)}...")
+        
+        try:
+            base64_image = encode_image_to_base64(contact_sheet_path)
+            raw_response = ""
+            
+            if model_type == 'ollama':
+                import ollama
+                client = ollama.Client()
+                response = client.chat(
+                    model=ollama_model,
+                    messages=[
+                        {
+                            'role': 'user',
+                            'content': contact_sheet_prompt,
+                            'images': [base64_image]
+                        }
+                    ],
+                    options={"think": False}
+                )
+                raw_response = response['message']['content']
+                
+            elif model_type == 'gemini':
+                import google.generativeai as genai
+                
+                if not config.get('gemini_api_key'):
+                    return jsonify({'status': 'error', 'message': 'Gemini API key not configured'}), 500
+                
+                genai.configure(api_key=config.get('gemini_api_key'))
+                model = genai.GenerativeModel(gemini_model)
+                
+                with open(contact_sheet_path, 'rb') as image_file:
+                    image_data = image_file.read()
+                
+                response = model.generate_content([contact_sheet_prompt, {"mime_type": "image/jpeg", "data": image_data}])
+                raw_response = response.text
+                
+            elif model_type == 'remote':
+                import requests
+                
+                with open(contact_sheet_path, 'rb') as img_file:
+                    files = {'image': img_file}
+                    data = {'prompt': contact_sheet_prompt}
+                    response = requests.post(remote_url, files=files, data=data)
+                    
+                    if response.status_code == 200:
+                        response_json = response.json()
+                        raw_response = response_json.get('response', '')
+                    else:
+                        print(f"  ⚠️ Remote server error: {response.status_code}")
+                        continue
+            else:
+                continue
+            
+            # Parse JSON response
+            if raw_response.strip().startswith("```json"):
+                json_str = raw_response.strip()[7:-3].strip()
+            elif raw_response.strip().startswith("```"):
+                lines = raw_response.strip().split('\n')
+                json_str = '\n'.join(lines[1:-1]).strip()
+            else:
+                json_str = raw_response
+            
+            try:
+                data = json.loads(json_str)
+                indices = data.get("selected_indices", [])
+                
+                # Convert 1-based indices to 0-based, and add offset for batch
+                batch_offset = idx * 16
+                for i in indices:
+                    if 1 <= i <= 16:
+                        all_selected_indices.append(batch_offset + i)
+                
+                print(f"    ✓ Selected indices from this sheet: {indices}")
+                
+            except json.JSONDecodeError:
+                print(f"  ⚠️ Failed to parse contact sheet response")
+                
+        except Exception as e:
+            print(f"  ⚠️ Error analyzing contact sheet {idx}: {e}")
+    
+    # Handle case where no frames selected - fallback to all frames
+    if not all_selected_indices:
+        print("  ⚠️ No educational frames selected, falling back to all frames")
+        # Use all frame indices
+        all_selected_indices = list(range(1, total_frames + 1))
+        use_fallback = True
+    else:
+        use_fallback = False
+    
+    print(f"  ✅ Total selected frames: {len(all_selected_indices)}")
+    
+    return jsonify({
+        'status': 'success',
+        'selected_indices': sorted(all_selected_indices),
+        'contact_sheets_created': len(contact_sheets),
+        'contact_sheets_analyzed': len(contact_sheets),
+        'total_frames': total_frames,
+        'fallback_used': use_fallback
+    })
+
+
+@app.route('/api/session/<session_id>/process_frames', methods=['POST'])
+def process_video_frames(session_id):
+    """
+    Process selected video frames with the vision model to generate frame descriptions.
+    
+    Request body (optional):
+        {
+            "frame_indices": [3, 8, 12, 15]  # Specific frames to process, or None for all
+        }
+    
+    Returns:
+        {
+            "status": "success",
+            "frames_processed": 12,
+            "frame_data_file": "frame_data.txt",
+            "descriptions": [
+                {"frame": 3, "timestamp": "00:02:15", "description": "..."},
+                {"frame": 8, "timestamp": "00:05:32", "description": "..."}
+            ]
+        }
+    """
+    from models import MEDIA_VIDEO_DIR, CaptureSession, SessionType, CapturedText
+    from scenarios.contact_sheet import extract_timestamp_from_filename, get_frame_index_from_filename
+    import os
+    import json
+    
+    data = request.get_json() or {}
+    frame_indices = data.get('frame_indices')  # Optional: specific frames to process
+    
+    # Verify session exists and is VIDEO type
+    db = get_db()
+    try:
+        session = db.query(CaptureSession).filter_by(id=session_id).first()
+        if not session:
+            return jsonify({'status': 'error', 'message': 'Session not found'}), 404
+        
+        if session.type != SessionType.VIDEO:
+            return jsonify({'status': 'error', 'message': 'Session is not a VIDEO session'}), 400
+    finally:
+        db.close()
+    
+    frames_dir = MEDIA_VIDEO_DIR / session_id / "frames"
+    output_dir = MEDIA_VIDEO_DIR / session_id
+    frame_data_file = output_dir / "frame_data.txt"
+    
+    if not frames_dir.exists():
+        return jsonify({'status': 'error', 'message': 'No frames found'}), 400
+    
+    # Get all frame files
+    frame_files = sorted([
+        f for f in frames_dir.iterdir() 
+        if f.suffix.lower() in ['.jpg', '.jpeg', '.png']
+    ])
+    
+    if not frame_files:
+        return jsonify({'status': 'error', 'message': 'No frame files found'}), 400
+    
+    # If no specific indices provided, process all
+    if frame_indices is None:
+        frame_indices = list(range(1, len(frame_files) + 1))
+    
+    # Get config for vision model
+    config = load_config()
+    model_type = config.get('model_type', 'remote')
+    ollama_model = config.get('ollama_model', 'qwen2.5vl:3b')
+    gemini_model = config.get('gemini_model', 'gemini-2.5-pro')
+    remote_url = config.get('remote_url', 'http://localhost:5001/predict')
+    
+    def encode_image_to_base64(image_path):
+        import base64
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
+    
+    # Build frame processing prompt
+    frame_prompt = """
+Analyze this video frame carefully and provide:
+1. A brief description (1-2 sentences) of what this frame shows
+2. Whether it contains text, diagrams, slides, code, or educational content
+
+Respond with ONLY a valid JSON:
+{"description": "Brief description of the frame content", "educational": "yes/no"}
+"""
+    
+    descriptions = []
+    frame_data_lines = []
+    
+    print(f"🖼️ Processing {len(frame_indices)} frames for session {session_id}")
+    
+    # Create a mapping of frame index to file
+    frame_file_map = {}
+    for f in frame_files:
+        idx = get_frame_index_from_filename(f.name)
+        frame_file_map[idx] = f
+    
+    for i, frame_idx in enumerate(frame_indices):
+        # Get frame file (1-based index)
+        frame_file = frame_file_map.get(frame_idx)
+        
+        if not frame_file:
+            print(f"  ⚠️ Frame {frame_idx} not found, skipping")
+            continue
+        
+        # Extract timestamp
+        timestamp = extract_timestamp_from_filename(frame_file.name)
+        if not timestamp:
+            # Try to calculate from frame index (assuming 1fps)
+            timestamp = f"00:{frame_idx // 60:02d}:{frame_idx % 60:02d}"
+        
+        print(f"  📷 Processing frame {frame_idx} ({i+1}/{len(frame_indices)}) - {timestamp}")
+        
+        try:
+            base64_image = encode_image_to_base64(frame_file)
+            raw_response = ""
+            
+            if model_type == 'ollama':
+                import ollama
+                client = ollama.Client()
+                response = client.chat(
+                    model=ollama_model,
+                    messages=[
+                        {
+                            'role': 'user',
+                            'content': frame_prompt,
+                            'images': [base64_image]
+                        }
+                    ],
+                    options={"think": False}
+                )
+                raw_response = response['message']['content']
+                
+            elif model_type == 'gemini':
+                import google.generativeai as genai
+                
+                if not config.get('gemini_api_key'):
+                    return jsonify({'status': 'error', 'message': 'Gemini API key not configured'}), 500
+                
+                genai.configure(api_key=config.get('gemini_api_key'))
+                model = genai.GenerativeModel(gemini_model)
+                
+                with open(frame_file, 'rb') as image_file:
+                    image_data = image_file.read()
+                
+                response = model.generate_content([frame_prompt, {"mime_type": "image/jpeg", "data": image_data}])
+                raw_response = response.text
+                
+            elif model_type == 'remote':
+                import requests
+                
+                with open(frame_file, 'rb') as img_file:
+                    files = {'image': img_file}
+                    data_p = {'prompt': frame_prompt}
+                    response = requests.post(remote_url, files=files, data=data_p)
+                    
+                    if response.status_code == 200:
+                        response_json = response.json()
+                        raw_response = response_json.get('response', '')
+                    else:
+                        print(f"    ⚠️ Remote server error: {response.status_code}")
+                        continue
+            else:
+                continue
+            
+            # Parse JSON
+            if raw_response.strip().startswith("```json"):
+                json_str = raw_response.strip()[7:-3].strip()
+            elif raw_response.strip().startswith("```"):
+                lines = raw_response.strip().split('\n')
+                json_str = '\n'.join(lines[1:-1]).strip()
+            else:
+                json_str = raw_response
+            
+            try:
+                frame_data = json.loads(json_str)
+                description = frame_data.get("description", "No description")
+                
+                descriptions.append({
+                    "frame": frame_idx,
+                    "timestamp": timestamp,
+                    "description": description
+                })
+                
+                # Add to frame data file
+                frame_data_lines.append(f"[{timestamp}] Frame {frame_idx}: {description}")
+                
+            except json.JSONDecodeError:
+                descriptions.append({
+                    "frame": frame_idx,
+                    "timestamp": timestamp,
+                    "description": raw_response[:200] if raw_response else "Failed to parse"
+                })
+                frame_data_lines.append(f"[{timestamp}] Frame {frame_idx}: {raw_response[:200]}")
+                
+        except Exception as e:
+            print(f"  ⚠️ Error processing frame {frame_idx}: {e}")
+    
+    # Write frame data to file
+    try:
+        with open(frame_data_file, 'w', encoding='utf-8') as f:
+            f.write("=== Video Frame Analysis ===\n\n")
+            f.write("\n".join(frame_data_lines))
+        print(f"  ✅ Frame data saved to: {frame_data_file}")
+    except Exception as e:
+        print(f"  ⚠️ Failed to save frame data: {e}")
+    
+    # Save to database
+    db = get_db()
+    try:
+        frame_data_text = "\n".join(frame_data_lines)
+        text_record = CapturedText(
+            session_id=session_id,
+            content=frame_data_text,
+            content_type="frame_data"
+        )
+        db.add(text_record)
+        db.commit()
+    except Exception as e:
+        print(f"  ⚠️ Failed to save frame data to database: {e}")
+    finally:
+        db.close()
+    
+    return jsonify({
+        'status': 'success',
+        'frames_processed': len(descriptions),
+        'frame_data_file': str(frame_data_file),
+        'descriptions': descriptions
+    })
+
+
+@app.route('/api/session/<session_id>/frame_data', methods=['GET'])
+def get_frame_data(session_id):
+    """Get the frame data text for a session."""
+    from models import MEDIA_VIDEO_DIR, CapturedText
+    
+    # First try to get from database
+    db = get_db()
+    try:
+        text_record = db.query(CapturedText).filter_by(
+            session_id=session_id,
+            content_type="frame_data"
+        ).first()
+        
+        if text_record:
+            return jsonify({
+                'content': text_record.content,
+                'exists': True
+            })
+    finally:
+        db.close()
+    
+    # Fallback to file
+    frame_data_file = MEDIA_VIDEO_DIR / session_id / "frame_data.txt"
+    
+    if not frame_data_file.exists():
+        return jsonify({
+            'content': '',
+            'exists': False
+        })
+    
+    try:
+        with open(frame_data_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        return jsonify({
+            'content': content,
+            'exists': True
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/session/<session_id>/transcript', methods=['GET'])
 def get_session_transcript(session_id):
     """
@@ -766,6 +1236,22 @@ def serve_video_frame(session_id, filename):
     safe_filename = secure_filename(filename)
     
     return send_from_directory(frames_dir, safe_filename)
+
+
+@app.route('/api/media/video/<session_id>/contact_sheets/<filename>')
+def serve_contact_sheet(session_id, filename):
+    """
+    Serve contact sheet images for frame selection.
+    """
+    contact_sheets_dir = MEDIA_VIDEO_DIR / session_id / "contact_sheets"
+    
+    if not contact_sheets_dir.exists():
+        return jsonify({'status': 'error', 'message': 'Contact sheets directory not found'}), 404
+    
+    # Secure the filename to prevent path traversal
+    safe_filename = secure_filename(filename)
+    
+    return send_from_directory(contact_sheets_dir, safe_filename)
 
 
 # ============================================================================
@@ -1193,22 +1679,132 @@ def list_processed_sessions():
         db.close()
 
 
+@app.route('/api/notes', methods=['GET'])
+def list_notes():
+    """
+    List all saved/generated notes.
+    """
+    from models import GeneratedNote
+    
+    db = get_db()
+    try:
+        notes = db.query(GeneratedNote).order_by(
+            GeneratedNote.created_at.desc()
+        ).all()
+        
+        result = [note.to_dict() for note in notes]
+        
+        return jsonify({
+            "notes": result,
+            "count": len(result)
+        })
+    finally:
+        db.close()
+
+
+@app.route('/api/notes/<note_id>', methods=['GET'])
+def get_note(note_id):
+    """
+    Get a specific note by ID.
+    """
+    from models import GeneratedNote
+    
+    db = get_db()
+    try:
+        note = db.query(GeneratedNote).filter_by(id=note_id).first()
+        
+        if not note:
+            return jsonify({'status': 'error', 'message': 'Note not found'}), 404
+        
+        return jsonify(note.to_dict())
+    finally:
+        db.close()
+
+
+@app.route('/api/notes/<note_id>', methods=['DELETE'])
+def delete_note(note_id):
+    """
+    Delete a saved note.
+    """
+    import os
+    from models import GeneratedNote, MEDIA_NOTES_DIR
+    
+    db = get_db()
+    try:
+        note = db.query(GeneratedNote).filter_by(id=note_id).first()
+        
+        if not note:
+            return jsonify({'status': 'error', 'message': 'Note not found'}), 404
+        
+        # Delete markdown file
+        md_filepath = MEDIA_NOTES_DIR / f"{note_id}.md"
+        if md_filepath.exists():
+            os.remove(md_filepath)
+        
+        # Delete from database
+        db.delete(note)
+        db.commit()
+        
+        return jsonify({'status': 'success', 'message': 'Note deleted'})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        db.close()
+
+
+@app.route('/api/notes/<note_id>/download', methods=['GET'])
+def download_note(note_id):
+    """
+    Download a note as a markdown file.
+    """
+    from models import GeneratedNote, MEDIA_NOTES_DIR
+    
+    db = get_db()
+    try:
+        note = db.query(GeneratedNote).filter_by(id=note_id).first()
+        
+        if not note:
+            return jsonify({'status': 'error', 'message': 'Note not found'}), 404
+        
+        # Try to get from file first
+        md_filepath = MEDIA_NOTES_DIR / f"{note_id}.md"
+        if md_filepath.exists():
+            with open(md_filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+        else:
+            # Fallback to database content
+            content = note.content
+        
+        return jsonify({
+            'status': 'success',
+            'content': content,
+            'filename': f"{note.title[:30].replace(' ', '_')}.md"
+        })
+    finally:
+        db.close()
+
+
 @app.route('/api/generate_notes', methods=['POST'])
 def generate_notes():
     """
     Generate notes from selected processed sessions.
     
     Request body: {
-        "session_ids": ["uuid-1", "uuid-2", ...]
+        "session_ids": ["uuid-1", "uuid-2", ...],
+        "skip_frames": false (optional, default false)
     }
     
     Response: {
         "status": "success",
         "notes": "...",
         "session_count": 2,
-        "chunks_used": 10
+        "chunks_used": 10,
+        "note_id": "uuid"
     }
     """
+    import json as json_lib
+    
     data = request.get_json()
     
     if not data:
@@ -1218,6 +1814,7 @@ def generate_notes():
         }), 400
     
     session_ids = data.get('session_ids', [])
+    skip_frames = data.get('skip_frames', False)
     
     if not session_ids:
         return jsonify({
@@ -1231,15 +1828,63 @@ def generate_notes():
     
     try:
         rag = get_rag_engine(notes_model)
-        result = rag.generate_notes(session_ids, notes_model)
+        result = rag.generate_notes(session_ids, notes_model, skip_frames=skip_frames)
         
         if result.get('success'):
-            return jsonify({
-                'status': 'success',
-                'notes': result.get('notes', ''),
-                'session_count': result.get('session_count', 0),
-                'chunks_used': result.get('chunks_used', 0)
-            })
+            notes_content = result.get('notes', '')
+            
+            # Generate a title from first few words of notes
+            title_preview = notes_content[:50].replace('\n', ' ').strip()
+            title = f"Notes - {title_preview}..."
+            
+            # Save to database
+            from models import GeneratedNote, MEDIA_NOTES_DIR
+            
+            db = get_db()
+            try:
+                note = GeneratedNote(
+                    id=str(uuid.uuid4()),
+                    title=title,
+                    content=notes_content,
+                    session_ids=json_lib.dumps(session_ids)
+                )
+                db.add(note)
+                db.commit()
+                
+                # Save as markdown file
+                notes_dir = MEDIA_NOTES_DIR
+                notes_dir.mkdir(parents=True, exist_ok=True)
+                md_filename = f"{note.id}.md"
+                md_filepath = notes_dir / md_filename
+                
+                with open(md_filepath, 'w', encoding='utf-8') as f:
+                    f.write(f"# {title}\n\n")
+                    f.write(f"*Generated from {len(session_ids)} session(s)*\n\n")
+                    f.write("---\n\n")
+                    f.write(notes_content)
+                
+                print(f"💾 Notes saved: {md_filepath}")
+                
+                return jsonify({
+                    'status': 'success',
+                    'notes': notes_content,
+                    'session_count': result.get('session_count', 0),
+                    'chunks_used': result.get('chunks_used', 0),
+                    'note_id': note.id
+                })
+            except Exception as db_error:
+                db.rollback()
+                print(f"⚠️ Failed to save notes to database: {db_error}")
+                # Still return the notes even if save failed
+                return jsonify({
+                    'status': 'success',
+                    'notes': notes_content,
+                    'session_count': result.get('session_count', 0),
+                    'chunks_used': result.get('chunks_used', 0),
+                    'note_id': None
+                })
+            finally:
+                db.close()
         else:
             return jsonify({
                 'status': 'error',
@@ -1527,7 +2172,8 @@ def process_uploaded_image(filepath, original_filename):
                         'content': vision_prompt,
                         'images': [base64_image]
                     }
-                ]
+                ],
+                options={"think": False}
             )
             raw_response = response['message']['content']
             
@@ -1819,7 +2465,8 @@ def process_video_frame(session_id):
                         'content': prompt,
                         'images': [base64_image]
                     }
-                ]
+                ],
+                options={"think": False}
             )
             raw_response = response['message']['content']
             

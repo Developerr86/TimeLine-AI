@@ -106,10 +106,65 @@ The project follows a **"Sidecar" Microservices Architecture** wrapped in a Desk
     * Falls back to default speaker loopback if unavailable.
 * [x] **Configurable Audio Library:**
     * Added `audio_library` setting in `config.json` (options: `soundcard`, `pyaudiowpatch`).
-    * Added UI toggle in Settings page under "🎤 Audio Recording Library".
+    * Added UI toggle in Settings page under "Audio Recording Library".
     * Default changed to `pyaudiowpatch` for better Windows audio capture reliability.
 * [x] **First Chunk Transcription Fix:**
     * Fixed bug where first audio chunk (used for language detection) was not transcribed.
+
+### **Phase 8: UI & Feature Enhancements (Completed)**
+* [x] **Sidebar UI Updates:**
+    * Removed analytics, info, and calendar icons from sidebar
+    * Added Notes icon and Notes page
+* [x] **Image Upload Processing:**
+    * Implemented `upload_image` endpoint to process uploaded images with vision model
+    * Added progress bar display during image processing
+    * Shows real-time status updates to user
+* [x] **Custom Delete Confirmation:**
+    * Added custom Electron-style confirmation dialog (not native browser popup)
+    * Used in ActivityCard for delete functionality
+    * Reusable `ConfirmDialog` component
+* [x] **IMG vs DOC Type Separation:**
+    * Uploaded images now get IMG type with user-provided description
+    * Documents (PDFs) get DOC type
+    * Different processing logic for each type
+* [x] **Transcript for IMG Sessions:**
+    * Shows description in transcript section for IMG sessions
+    * Displays as "Image Description:" in the transcript view
+
+### **Phase 9: Video Processing Pipeline (Completed)**
+* [x] **Contact Sheet Generation:**
+    * Created `scenarios/contact_sheet.py` utility
+    * Generates 4x4 grid contact sheets (16 frames each)
+    * Thumbnails are 300x300px, resulting in 1200x1200px contact sheets
+    * Saves to `media/video/<session_id>/contact_sheets/`
+* [x] **AI Frame Analysis & Selection:**
+    * Vision model analyzes contact sheets to identify relevant frames
+    * Includes "educational" indicator in vision model JSON output
+    * Disabled thinking mode (`think: false`) for Ollama vision model calls
+    * Shows batch number during contact sheet analysis
+* [x] **Manual Frame Selection Fallback:**
+    * If AI selects no frames, displays contact sheets to user for manual selection
+    * 4x4 grid UI with batch navigation
+    * User can select/deselect individual frames
+* [x] **Processing Enhancements:**
+    * Added collapsible logs panel during note generation
+    * Includes previous frame context in video frame analysis
+    * Better error handling and status updates
+
+### **Phase 10: Notes Persistence (Completed)**
+* [x] **Local Note Storage:**
+    * Generated notes saved as markdown files in `media/notes/` directory
+    * Database table `generated_notes` stores note metadata
+    * Each note linked to session_id and includes title, content, created_at
+* [x] **Notes Page:**
+    * New `NotesView.tsx` component displays all saved notes
+    * Shows note title, session info, and creation date
+    * View, save (download), and delete functionality
+* [x] **Notes API:**
+    * `GET /api/notes` - List all saved notes
+    * `GET /api/notes/<id>` - Get specific note
+    * `DELETE /api/notes/<id>` - Delete note
+    * `GET /api/notes/<id>/download` - Download note as markdown
 
 ---
 
@@ -135,6 +190,22 @@ The project follows a **"Sidecar" Microservices Architecture** wrapped in a Desk
 | GET | `/api/current_session` | Get live status (recording state, live transcript) |
 | GET | `/api/session/<id>` | Get static session details |
 
+### **Video Processing (NEW)**
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | `/api/session/<id>/analyze_contact_sheets` | Analyze contact sheets for frame selection |
+| POST | `/api/session/<id>/process_frames` | Process selected video frames |
+| GET | `/api/session/<id>/frame_data` | Get frame analysis data |
+| GET | `/api/media/video/<id>/contact_sheets/<filename>` | Serve contact sheet images |
+
+### **Notes (NEW)**
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/notes` | List all saved notes |
+| GET | `/api/notes/<id>` | Get specific note |
+| DELETE | `/api/notes/<id>` | Delete note |
+| GET | `/api/notes/<id>/download` | Download note as markdown |
+
 ---
 
 ## 6. Configuration (`config.json`)
@@ -153,21 +224,33 @@ Timeline-AI/
 ├── electron/
 ├── src/
 │   ├── components/
-│   │   ├── ActivityList.tsx       # NEW: Queue UI
+│   │   ├── ActivityList.tsx       # Queue UI
 │   │   ├── ScenarioDetailsView.tsx # Live transcript/frames
 │   │   ├── SettingsView.tsx       # Settings with audio library toggle
+│   │   ├── NotesView.tsx          # Saved notes page
+│   │   ├── NotesModal.tsx         # Note generation with frame selection
+│   │   ├── ConfirmDialog.tsx      # Custom confirmation dialog
+│   │   ├── TimelineView.tsx       # Home page with activities
+│   │   ├── ControlPanel.tsx       # Upload and progress UI
+│   │   ├── ActivityCard.tsx       # Activity display with delete
 │   │   └── ...
+│   ├── services/
+│   │   └── api.ts                 # API service with new endpoints
 │   └── App.tsx
 ├── extension/
 │   ├── background.js       # Coordinator
-│   ├── content.js          # NEW: Video Frame Extractor
+│   ├── content.js          # Video Frame Extractor
 │   └── manifest.json
 ├── backend/
 │   ├── main.py             # API with new /ingest endpoints
 │   ├── orchestrator.py     # Manages PendingActivity queue
-│   ├── config.json         # App configuration (includes audio_library)
+│   ├── models.py           # Database models (includes GeneratedNote)
+│   ├── rag_engine.py       # Note generation with frame data
+│   ├── config.json         # App configuration
 │   ├── scenarios/
-│   │   ├── video_capture.py # Whisper + Audio Recording (soundcard/pyaudiowpatch)
+│   │   ├── video_capture.py # Whisper + Audio Recording
 │   │   ├── doc_capture.py   # PyMuPDF + EasyOCR
-│   │   └── web_capture.py   # Trafilatura + Snapshot handling
-│   └── media/              # Storage
+│   │   ├── web_capture.py   # Trafilatura + Snapshot handling
+│   │   └── contact_sheet.py # Contact sheet generation utility
+│   └── media/              # Storage (notes/, video/, frames/)
+```
