@@ -3,6 +3,8 @@ __pycache__
 *.py[cod]
 *$py.class
 .env
+.venv/
+venv/
 
 # Node
 node_modules/
@@ -15,6 +17,7 @@ samples/
 ml-fastvlm/
 timeline.db
 *.log
+extension/Downloads/
 
 # IDE
 .vscode/
