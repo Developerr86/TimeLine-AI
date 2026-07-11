@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Sparkles, FileText, Video, Globe, Check, Loader2, Image, Layers, FileCheck, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, Sparkles, FileText, Video, Globe, Check, Loader2, Image, Layers, FileCheck, ChevronDown, ChevronRight, Inbox } from 'lucide-react';
 import { api, ProcessedSession } from '../services/api';
 
 interface NotesModalProps {
@@ -257,11 +257,11 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
                 onClose();
             } else {
                 addLog(`Failed to generate notes: ${response.message}`, 'error');
-                showNotification(`❌ ${response.message || 'Failed to generate notes'}`, 'error');
+                showNotification(`${response.message || 'Failed to generate notes'}`, 'error');
             }
         } catch (error) {
             addLog(`Error generating notes: ${error}`, 'error');
-            showNotification('❌ Failed to generate notes', 'error');
+            showNotification('Failed to generate notes', 'error');
         } finally {
             setGenerating(false);
             setCurrentStep('idle');
@@ -447,7 +447,7 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
                 {/* Header */}
                 <div className="flex items-center justify-between p-5 border-b border-white/10">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 gradient-purple rounded-xl flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#8b5cf6' }}>
                             <Sparkles className="w-5 h-5 text-white" />
                         </div>
                         <div>
@@ -655,7 +655,7 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
                         </div>
                     ) : sessions.length === 0 ? (
                         <div className="text-center py-12">
-                            <div className="text-4xl mb-4">📭</div>
+                            <Inbox className="w-12 h-12 text-gray-500 mb-4" />
                             <h3 className="text-lg font-medium text-white mb-2">No processed activities</h3>
                             <p className="text-gray-400 text-sm">
                                 Process some Video, Document, or Web activities first to generate notes.
@@ -691,13 +691,13 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
                                     <button
                                         key={session.id}
                                         onClick={() => toggleSession(session.id)}
-                                        className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                                        className={`w-full flex items-center gap-3 p-3 rounded-xl border-[3px] border transition-all ${
                                             selectedIds.has(session.id)
                                                 ? 'border-coral-500/50 bg-coral-500/10'
                                                 : 'border-white/10 bg-white/5 hover:bg-white/10'
                                         }`}
                                     >
-                                        <div className={`w-5 h-5 rounded flex items-center justify-center border ${
+                                        <div className={`w-5 h-5 rounded flex items-center justify-center border-[3px] border ${
                                             selectedIds.has(session.id)
                                                 ? 'bg-coral-500 border-coral-500'
                                                 : 'border-gray-500'
@@ -728,7 +728,7 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
 
                             {/* Skip Frame Processing Option */}
                             {videoSessionCount > 0 && (
-                                <div className="mt-4 p-3 rounded-xl border border-purple-500/30 bg-purple-500/10">
+                                <div className="mt-4 p-3 rounded-xl border-[3px] border border-purple-500/30 bg-purple-500/10">
                                     <label className="flex items-center gap-3 cursor-pointer">
                                         <input
                                             type="checkbox"
@@ -757,8 +757,8 @@ export default function NotesModal({ isOpen, onClose, onNotesGenerated, showNoti
                                 {videoSessionCount > 0 && (
                                     <span className="text-purple-400">
                                         {skipFrameProcessing 
-                                            ? `🎬 ${videoSessionCount} video(s) - notes will be generated from transcript only`
-                                            : `🎬 ${videoSessionCount} video(s) - you'll select frames to process`
+                                            ? `${videoSessionCount} video(s) - notes will be generated from transcript only`
+                                            : `${videoSessionCount} video(s) - you'll select frames to process`
                                         }
                                     </span>
                                 )}

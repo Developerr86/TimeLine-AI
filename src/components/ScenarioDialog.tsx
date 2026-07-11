@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Globe, FileText, Video } from 'lucide-react';
 import type { PendingScenario } from '../vite-env.d';
 
 interface ScenarioDialogProps {
@@ -6,21 +7,21 @@ interface ScenarioDialogProps {
     onDismiss: () => Promise<void>;
 }
 
-const scenarioInfo = {
+const scenarioInfo: Record<string, { icon: React.ReactNode; title: string; description: string; action: string }> = {
     WEB: {
-        icon: '🌐',
+        icon: <Globe className="w-6 h-6" />,
         title: 'Web Article Detected',
         description: 'Extract and save the article content from this webpage?',
         action: 'Capture Article'
     },
     DOC: {
-        icon: '📄',
+        icon: <FileText className="w-6 h-6" />,
         title: 'Document Detected',
         description: 'Process this document and extract text content?',
         action: 'Process Document'
     },
     VIDEO: {
-        icon: '🎬',
+        icon: <Video className="w-6 h-6" />,
         title: 'Video Lecture Detected',
         description: 'Start recording audio and capturing frames from this video?',
         action: 'Start Recording'
@@ -35,7 +36,7 @@ export default function ScenarioDialog({ onConfirm, onDismiss }: ScenarioDialogP
         // Listen for scenario dialog events from Electron main process
         if (window.electronAPI?.onShowScenarioDialog) {
             window.electronAPI.onShowScenarioDialog((pendingScenario) => {
-                console.log('📋 Scenario dialog triggered:', pendingScenario);
+                console.log('Scenario dialog triggered:', pendingScenario);
                 setScenario(pendingScenario);
             });
         }
@@ -147,13 +148,12 @@ export default function ScenarioDialog({ onConfirm, onDismiss }: ScenarioDialogP
                 }
 
                 .scenario-dialog {
-                    background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 16px;
+                    background: #1a1a28;
+                    border: 3px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 19px;
                     padding: 24px;
                     width: 400px;
                     max-width: 90vw;
-                    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
                     animation: slideUp 0.3s ease-out;
                 }
 
@@ -165,7 +165,11 @@ export default function ScenarioDialog({ onConfirm, onDismiss }: ScenarioDialogP
                 }
 
                 .scenario-icon {
-                    font-size: 32px;
+                    width: 32px;
+                    height: 32px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
                 }
 
                 .scenario-dialog-header h2 {
@@ -202,14 +206,14 @@ export default function ScenarioDialog({ onConfirm, onDismiss }: ScenarioDialogP
                     flex: 1;
                     height: 8px;
                     background: rgba(255, 255, 255, 0.1);
-                    border-radius: 4px;
+                    border-radius: 5px;
                     overflow: hidden;
                 }
 
                 .confidence-fill {
                     height: 100%;
-                    background: linear-gradient(90deg, #4ade80 0%, #22c55e 100%);
-                    border-radius: 4px;
+                    background: #22c55e;
+                    border-radius: 5px;
                     transition: width 0.3s ease;
                 }
 
@@ -229,7 +233,7 @@ export default function ScenarioDialog({ onConfirm, onDismiss }: ScenarioDialogP
                 .scenario-dialog-actions button {
                     flex: 1;
                     padding: 12px 20px;
-                    border-radius: 10px;
+                    border-radius: 12px;
                     font-size: 14px;
                     font-weight: 600;
                     cursor: pointer;
@@ -247,13 +251,12 @@ export default function ScenarioDialog({ onConfirm, onDismiss }: ScenarioDialogP
                 }
 
                 .btn-confirm {
-                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                    background: #8b5cf6;
                     color: #fff;
                 }
 
                 .btn-confirm:hover:not(:disabled) {
                     transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
                 }
 
                 .scenario-dialog-actions button:disabled {

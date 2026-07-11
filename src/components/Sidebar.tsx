@@ -19,7 +19,7 @@ export default function Sidebar() {
         <aside className="fixed left-0 top-0 bottom-0 w-20 glass flex flex-col items-center py-8 z-40">
             {/* Logo */}
             <div className="mb-8">
-                <div className="w-12 h-12 gradient-primary rounded-xl flex items-center justify-center shadow-lg">
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg" style={{ background: '#ff6b6b' }}>
                     <Sparkles className="w-6 h-6 text-white" />
                 </div>
             </div>

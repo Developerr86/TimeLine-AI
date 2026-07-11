@@ -29,7 +29,16 @@ export default {
                 }
             },
             fontFamily: {
-                sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                sans: ['SF Pro Display', 'system-ui', '-apple-system', 'sans-serif'],
+            },
+            borderRadius: {
+                'sm': '0.3rem',
+                'DEFAULT': '0.3rem',
+                'md': '0.45rem',
+                'lg': '0.6rem',
+                'xl': '0.9rem',
+                '2xl': '1.2rem',
+                '3xl': '1.6rem',
             },
             backdropBlur: {
                 xs: '2px',

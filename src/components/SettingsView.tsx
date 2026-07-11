@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, AlertTriangle, Settings, Mic, Lightbulb } from 'lucide-react';
 import { api, Config } from '../services/api';
 
 interface SettingsViewProps {
@@ -46,26 +46,26 @@ export default function SettingsView({ showNotification }: SettingsViewProps) {
         setSaving(true);
         try {
             await api.updateConfig(config);
-            showNotification('✅ Configuration saved successfully!', 'success');
+            showNotification('Configuration saved successfully!', 'success');
             navigate('/');
         } catch (error) {
-            showNotification('❌ Failed to save configuration', 'error');
+            showNotification('Failed to save configuration', 'error');
         } finally {
             setSaving(false);
         }
     };
 
     const handleClearContext = async () => {
-        if (!confirm('⚠️ ARE YOU SURE?\n\nThis will PERMANENTLY DELETE all screenshots and activity history.\n\nThis action cannot be undone.')) {
+        if (!confirm('ARE YOU SURE?\n\nThis will PERMANENTLY DELETE all screenshots and activity history.\n\nThis action cannot be undone.')) {
             return;
         }
 
         try {
             await api.clearContext();
-            showNotification('✅ All data has been cleared successfully', 'success');
+            showNotification('All data has been cleared successfully', 'success');
             navigate('/');
         } catch (error) {
-            showNotification('❌ Failed to clear data', 'error');
+            showNotification('Failed to clear data', 'error');
         }
     };
 
@@ -93,7 +93,7 @@ export default function SettingsView({ showNotification }: SettingsViewProps) {
 
             {/* Settings Form */}
             <div className="glass rounded-2xl p-6 mb-6">
-                <h2 className="text-xl font-medium text-coral-400 mb-6">⚙️ Configuration</h2>
+                <h2 className="text-xl font-medium text-coral-400 mb-6"><Settings className="w-5 h-5 inline mr-2" />Configuration</h2>
 
                 <div className="space-y-5">
                     {/* Screenshot Interval */}
@@ -178,7 +178,7 @@ export default function SettingsView({ showNotification }: SettingsViewProps) {
                     {/* Audio Recording Library */}
                     <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">
-                            🎤 Audio Recording Library
+                            <Mic className="w-4 h-4 inline mr-1" /> Audio Recording Library
                         </label>
                         <select
                             className="select"
@@ -191,7 +191,7 @@ export default function SettingsView({ showNotification }: SettingsViewProps) {
                         <p className="text-xs text-gray-500 mt-1">Choose 'pyaudiowpatch' if audio is choppy or broken. Requires app restart.</p>
                     </div>
 
-                    <hr className="border-white/10 my-6" />
+                    <hr className="border-[3px] border-white/10 my-6" />
 
                     {/* Screenshot Model Type */}
                     <div>
@@ -284,7 +284,7 @@ export default function SettingsView({ showNotification }: SettingsViewProps) {
             </div>
 
             {/* Danger Zone */}
-            <div className="glass rounded-2xl p-6 border border-red-500/30">
+            <div className="glass rounded-2xl p-6 border-[3px] border-red-500/30">
                 <h2 className="text-xl font-medium text-red-400 mb-4 flex items-center gap-2">
                     <AlertTriangle className="w-5 h-5" />
                     Danger Zone
@@ -303,7 +303,7 @@ export default function SettingsView({ showNotification }: SettingsViewProps) {
 
             {/* Info Panel */}
             <div className="glass rounded-2xl p-6 mt-6">
-                <h3 className="text-lg font-medium text-coral-400 mb-4">💡 Tips & Information</h3>
+                <h3 className="text-lg font-medium text-coral-400 mb-4"><Lightbulb className="w-5 h-5 inline mr-2" />Tips & Information</h3>
                 <ul className="space-y-2 text-sm text-gray-400">
                     <li><strong className="text-gray-300">Screenshot Interval:</strong> Lower values (3-5s) capture more frequently but use more resources.</li>
                     <li><strong className="text-gray-300">Similarity Threshold:</strong> Values between 0.90-0.99 work best. Higher = only very different screenshots are kept.</li>

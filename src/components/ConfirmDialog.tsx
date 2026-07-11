@@ -28,7 +28,7 @@ export default function ConfirmDialog({
             <div className="glass rounded-2xl w-full max-w-md mx-4 p-6">
                 {/* Header */}
                 <div className="flex items-center gap-4 mb-4">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${destructive ? 'bg-red-500/20' : 'bg-blue-500/20'}`}>
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-[3px] ${destructive ? 'bg-red-500/20 border-red-500/30' : 'bg-blue-500/20 border-blue-500/30'}`}>
                         <AlertTriangle className={`w-6 h-6 ${destructive ? 'text-red-400' : 'text-blue-400'}`} />
                     </div>
                     <h2 className="text-xl font-semibold text-white">{title}</h2>

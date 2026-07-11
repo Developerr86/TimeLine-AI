@@ -2,6 +2,78 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('../../fonts/sf-pro-display/SFPRODISPLAYULTRALIGHTITALIC.OTF') format('opentype');
+  font-weight: 100;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('../../fonts/sf-pro-display/SFPRODISPLAYTHINITALIC.OTF') format('opentype');
+  font-weight: 200;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('../../fonts/sf-pro-display/SFPRODISPLAYLIGHTITALIC.OTF') format('opentype');
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('../../fonts/sf-pro-display/SFPRODISPLAYREGULAR.OTF') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('../../fonts/sf-pro-display/SFPRODISPLAYMEDIUM.OTF') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('../../fonts/sf-pro-display/SFPRODISPLAYSEMIBOLDITALIC.OTF') format('opentype');
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('../../fonts/sf-pro-display/SFPRODISPLAYBOLD.OTF') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('../../fonts/sf-pro-display/SFPRODISPLAYHEAVYITALIC.OTF') format('opentype');
+  font-weight: 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('../../fonts/sf-pro-display/SFPRODISPLAYBLACKITALIC.OTF') format('opentype');
+  font-weight: 900;
+  font-style: italic;
+  font-display: swap;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -9,8 +81,8 @@
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f1a 100%);
+  font-family: 'SF Pro Display', system-ui, -apple-system, sans-serif;
+  background: #0d0d14;
   min-height: 100vh;
   color: #e5e7eb;
   overflow-x: hidden;
@@ -24,12 +96,12 @@ body {
 
 ::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
+  border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -40,48 +112,39 @@ body {
 .glass {
   background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 3px solid rgba(255, 255, 255, 0.1);
 }
 
 .glass-light {
   background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 3px solid rgba(255, 255, 255, 0.15);
 }
 
 .glass-dark {
-  background: rgba(15, 15, 26, 0.8);
+  background: rgba(13, 13, 20, 0.8);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 3px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Gradient backgrounds */
+/* Solid color backgrounds (replacing gradients) */
 .gradient-primary {
-  background: linear-gradient(135deg, #ff9a56 0%, #ff6b6b 100%);
+  background: #ff6b6b;
 }
 
 .gradient-success {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: #10b981;
 }
 
 .gradient-danger {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  background: #ef4444;
 }
 
 .gradient-purple {
-  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+  background: #8b5cf6;
 }
 
 /* Animations */
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 5px rgba(16, 185, 129, 0.4), 0 0 10px rgba(16, 185, 129, 0.2);
-  }
-  50% {
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.6), 0 0 20px rgba(16, 185, 129, 0.4);
-  }
-}
-
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -108,10 +171,6 @@ body {
   }
 }
 
-.animate-pulse-glow {
-  animation: pulse-glow 2s infinite;
-}
-
 .animate-slide-up {
   animation: slide-up 0.3s ease-out;
 }
@@ -132,12 +191,11 @@ body {
 
 /* Card hover effects */
 .card-hover {
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transition: transform 0.3s ease;
 }
 
 .card-hover:hover {
   transform: translateY(-4px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
 }
 
 /* Button styles */
@@ -150,36 +208,30 @@ body {
 }
 
 .btn-primary {
-  @apply btn text-white shadow-lg;
-  background: linear-gradient(135deg, #ff9a56 0%, #ff6b6b 100%);
-  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+  @apply btn text-white;
+  background: #ff6b6b;
 }
 
 .btn-primary:hover:not(:disabled) {
   @apply -translate-y-0.5;
-  box-shadow: 0 6px 16px rgba(255, 107, 107, 0.4);
 }
 
 .btn-success {
-  @apply btn text-white shadow-lg;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  @apply btn text-white;
+  background: #10b981;
 }
 
 .btn-success:hover:not(:disabled) {
   @apply -translate-y-0.5;
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
 }
 
 .btn-danger {
-  @apply btn text-white shadow-lg;
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  @apply btn text-white;
+  background: #ef4444;
 }
 
 .btn-danger:hover:not(:disabled) {
   @apply -translate-y-0.5;
-  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
 }
 
 .btn-secondary {
@@ -192,7 +244,8 @@ body {
 
 /* Form inputs */
 .input {
-  @apply w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-coral-500 focus:ring-1 focus:ring-coral-500/50 transition-all;
+  @apply w-full px-4 py-3 rounded-lg bg-white/10 text-white placeholder-gray-400 focus:outline-none focus:border-coral-500 focus:ring-1 focus:ring-coral-500/50 transition-all;
+  border: 3px solid rgba(255, 255, 255, 0.2);
 }
 
 .select {

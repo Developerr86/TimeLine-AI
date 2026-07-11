@@ -100,7 +100,7 @@ function App() {
                 // New activity detected
                 const latestActivity = status.orchestrator.pending_activities?.[0];
                 if (latestActivity) {
-                    showNotification(`📥 Video Detected: ${latestActivity.title}`, 'info');
+                    showNotification(`Video Detected: ${latestActivity.title}`, 'info');
                 }
             }
             prevActivitiesCountRef.current = currentCount;
@@ -110,20 +110,20 @@ function App() {
     const handleStart = async () => {
         try {
             await api.startCapture();
-            showNotification('✅ Activity tracking started! Install the browser extension to detect scenarios.', 'success');
+            showNotification('Activity tracking started. Install the browser extension to detect scenarios.', 'success');
             fetchStatus();
         } catch (error) {
-            showNotification('❌ Failed to start tracking', 'error');
+            showNotification('Failed to start tracking', 'error');
         }
     };
 
     const handleStop = async () => {
         try {
             await api.stopCapture();
-            showNotification('⏸️ Activity tracking stopped', 'info');
+            showNotification('Activity tracking stopped', 'info');
             fetchStatus();
         } catch (error) {
-            showNotification('❌ Failed to stop tracking', 'error');
+            showNotification('Failed to stop tracking', 'error');
         }
     };
 
@@ -132,7 +132,7 @@ function App() {
         if (window.electronAPI?.confirmScenario) {
             const result = await window.electronAPI.confirmScenario();
             if (result.status === 'confirmed') {
-                showNotification('✅ Scenario confirmed! Processing started...', 'success');
+                showNotification('Scenario confirmed. Processing started...', 'success');
             }
             fetchStatus();
         }
@@ -141,7 +141,7 @@ function App() {
     const handleDismissScenario = async () => {
         if (window.electronAPI?.dismissScenario) {
             await window.electronAPI.dismissScenario();
-            showNotification('👋 Scenario dismissed', 'info');
+            showNotification('Scenario dismissed', 'info');
             fetchStatus();
         }
     };

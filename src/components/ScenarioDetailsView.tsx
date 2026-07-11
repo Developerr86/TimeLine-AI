@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     ArrowLeft, FileText, Clock, Cpu, Zap,
-    Save, Edit3, X, Image, RefreshCw, Loader2, Database, Check
+    Save, Edit3, X, Image, RefreshCw, Loader2, Database, Check, XCircle, Mic
 } from 'lucide-react';
 import {
     api,
@@ -73,9 +73,9 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
             await api.updateSessionTranscript(sessionId, editedContent);
             setTranscriptContent(editedContent);
             setIsEditing(false);
-            showNotification('✅ Transcript saved', 'success');
+            showNotification('Transcript saved', 'success');
         } catch (error) {
-            showNotification('❌ Failed to save transcript', 'error');
+            showNotification('Failed to save transcript', 'error');
         } finally {
             setSaving(false);
         }
@@ -99,13 +99,13 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
             const result = await api.indexSession(sessionId);
             if (result.status === 'success') {
                 setIndexed(true);
-                showNotification(`✅ Indexed ${result.chunks_indexed} chunks into vector store`, 'success');
+                showNotification(`Indexed ${result.chunks_indexed} chunks into vector store`, 'success');
             } else {
-                showNotification(`❌ ${result.message || 'Indexing failed'}`, 'error');
+                showNotification(`${result.message || 'Indexing failed'}`, 'error');
             }
         } catch (error) {
             console.error('Failed to index transcript:', error);
-            showNotification('❌ Failed to index transcript', 'error');
+            showNotification('Failed to index transcript', 'error');
         } finally {
             setIndexing(false);
         }
@@ -136,7 +136,7 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
                     Back to Timeline
                 </button>
                 <div className="glass rounded-2xl p-12 text-center">
-                    <div className="text-6xl mb-4">❌</div>
+                    <XCircle className="w-16 h-16 text-gray-500 mb-4" />
                     <h2 className="text-2xl font-medium text-white mb-2">Session not found</h2>
                     <p className="text-gray-400">The session you're looking for doesn't exist.</p>
                 </div>
@@ -211,7 +211,7 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
                                     <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                                 </div>
                                 <div>
-                                    <p className="text-white font-medium">🎙️ Recording & Transcribing</p>
+                                    <p className="text-white font-medium flex items-center gap-2"><Mic className="w-5 h-5 text-purple-400" /> Recording & Transcribing</p>
                                     <p className="text-sm text-gray-400 flex items-center gap-2">
                                         {deviceType === 'cuda' ? (
                                             <><Zap className="w-4 h-4 text-yellow-400" /> GPU Acceleration</>
@@ -348,7 +348,7 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
                             <textarea
                                 value={editedContent}
                                 onChange={(e) => setEditedContent(e.target.value)}
-                                className="w-full h-80 bg-transparent border border-white/10 rounded-lg p-4 text-gray-300 font-mono text-sm resize-none focus:outline-none focus:border-purple-500"
+                                className="w-full h-80 bg-transparent border-[3px] border-white/10 rounded-lg p-4 text-gray-300 font-mono text-sm resize-none focus:outline-none focus:border-purple-500"
                                 placeholder="Enter transcript..."
                             />
                         ) : displayChunks.length > 0 ? (
@@ -396,7 +396,7 @@ export default function ScenarioDetailsView({ showNotification }: ScenarioDetail
                                         className="w-full aspect-video object-cover"
                                         loading="lazy"
                                     />
-                                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 p-2">
+                                    <div className="absolute bottom-0 left-0 right-0 p-2" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)' }}>
                                         <p className="text-white text-xs font-mono">
                                             {frame.video_time !== null
                                                 ? formatTime(frame.video_time)

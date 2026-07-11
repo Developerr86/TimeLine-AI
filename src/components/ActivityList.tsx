@@ -26,9 +26,9 @@ const scenarioIcons = {
 };
 
 const scenarioColors = {
-    VIDEO: 'from-red-500 to-pink-500',
-    DOC: 'from-blue-500 to-cyan-500',
-    WEB: 'from-green-500 to-emerald-500',
+    VIDEO: 'bg-red-500',
+    DOC: 'bg-blue-500',
+    WEB: 'bg-green-500',
 };
 
 export default function ActivityList({ onProcess, onDismiss, showNotification }: ActivityListProps) {
@@ -60,19 +60,19 @@ export default function ActivityList({ onProcess, onDismiss, showNotification }:
         try {
             const result = await api.processActivity(activity.id);
             if (result.status === 'processing') {
-                showNotification?.(`▶️ Started processing: ${activity.title}`, 'success');
+                showNotification?.(`Started processing: ${activity.title}`, 'success');
                 // Store the session ID for navigation
                 if ((result as any).capture_session_id) {
                     setActiveSessionId((result as any).capture_session_id);
                 }
                 onProcess?.(activity);
             } else {
-                showNotification?.(`❌ Failed to start processing`, 'error');
+                showNotification?.(`Failed to start processing`, 'error');
             }
             fetchActivities();
         } catch (error) {
             console.error('Failed to process activity:', error);
-            showNotification?.(`❌ Error: ${error}`, 'error');
+            showNotification?.(`Error: ${error}`, 'error');
         } finally {
             setLoading(false);
             setProcessingId(null);
@@ -83,7 +83,7 @@ export default function ActivityList({ onProcess, onDismiss, showNotification }:
         try {
             const result = await api.dismissActivity(activity.id);
             if (result.status === 'dismissed') {
-                showNotification?.(`🗑️ Dismissed: ${activity.title}`, 'info');
+                showNotification?.(`Dismissed: ${activity.title}`, 'info');
                 onDismiss?.(activity);
             }
             fetchActivities();
@@ -97,14 +97,14 @@ export default function ActivityList({ onProcess, onDismiss, showNotification }:
         try {
             const result = await api.stopActivity();
             if (result.status === 'stopped') {
-                showNotification?.(`⏹️ Stopped processing: ${activity.title}`, 'info');
+                showNotification?.(`Stopped processing: ${activity.title}`, 'info');
             } else {
-                showNotification?.(`❌ Failed to stop processing`, 'error');
+                showNotification?.(`Failed to stop processing`, 'error');
             }
             fetchActivities();
         } catch (error) {
             console.error('Failed to stop activity:', error);
-            showNotification?.(`❌ Error: ${error}`, 'error');
+            showNotification?.(`Error: ${error}`, 'error');
         } finally {
             setStoppingId(null);
         }
@@ -140,7 +140,7 @@ export default function ActivityList({ onProcess, onDismiss, showNotification }:
             <div className="space-y-2">
                 {activities.map((activity) => {
                     const Icon = scenarioIcons[activity.scenario] || Globe;
-                    const gradientColor = scenarioColors[activity.scenario] || 'from-gray-500 to-gray-600';
+                    const gradientColor = scenarioColors[activity.scenario] || 'bg-gray-600';
                     const isProcessing = processingId === activity.id;
                     const isClickable = activity.processing && activeSessionId;
 
@@ -157,7 +157,7 @@ export default function ActivityList({ onProcess, onDismiss, showNotification }:
                         >
                             <div className="flex items-start gap-3">
                                 {/* Icon */}
-                                <div className={`p-2 rounded-lg bg-gradient-to-br ${gradientColor} flex-shrink-0`}>
+                                <div className={`p-2 rounded-lg ${gradientColor} flex-shrink-0`}>
                                     <Icon className="w-4 h-4 text-white" />
                                 </div>
 
@@ -200,7 +200,7 @@ export default function ActivityList({ onProcess, onDismiss, showNotification }:
                                         <button
                                             onClick={() => handleStop(activity)}
                                             disabled={stoppingId === activity.id}
-                                            className="p-2 rounded-lg bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-white transition-all duration-200 disabled:opacity-50"
+                                            className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-all duration-200 disabled:opacity-50"
                                             title="Stop processing"
                                         >
                                             {stoppingId === activity.id ? (
@@ -215,7 +215,7 @@ export default function ActivityList({ onProcess, onDismiss, showNotification }:
                                             <button
                                                 onClick={() => handleProcess(activity)}
                                                 disabled={loading}
-                                                className="p-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white transition-all duration-200 disabled:opacity-50"
+                                                className="p-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white transition-all duration-200 disabled:opacity-50"
                                                 title="Process this activity"
                                             >
                                                 {isProcessing ? (

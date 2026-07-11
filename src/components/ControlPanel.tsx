@@ -1,4 +1,4 @@
-import { Play, Square, Upload, Activity, Image, Loader2 } from 'lucide-react';
+import { Play, Square, Upload, Activity, Image, Loader2, ClipboardList, BookOpen } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { StatusResponse, api } from '../services/api';
 
@@ -79,7 +79,7 @@ export default function ControlPanel({ status, onStart, onStop }: ControlPanelPr
                 {/* Left: Filter tabs (placeholder for future) */}
                 <div className="flex items-center gap-2">
                     <button className="px-4 py-2 rounded-lg bg-white/10 text-sm font-medium text-white">
-                        📋 All tasks
+                        <ClipboardList className="w-4 h-4 inline mr-1" /> All tasks
                     </button>
                 </div>
 
@@ -88,7 +88,7 @@ export default function ControlPanel({ status, onStart, onStop }: ControlPanelPr
                     {/* Status Badge */}
                     <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${isMonitoring ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-gray-400'
                         }`}>
-                        <span className={`w-2 h-2 rounded-full ${isMonitoring ? 'bg-emerald-400 animate-pulse-glow' : 'bg-gray-500'
+                        <span className={`w-2 h-2 rounded-full ${isMonitoring ? 'bg-emerald-400' : 'bg-gray-500'
                             }`} />
                         <span className="text-sm font-medium">
                             {isMonitoring ? (currentState === 'AWAITING_USER_INPUT' ? 'Paused' : 'Recording') : 'Idle'}
@@ -177,7 +177,7 @@ export default function ControlPanel({ status, onStart, onStop }: ControlPanelPr
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="text-sm font-medium text-gray-300">Pending Screenshot</h3>
                         <span className="text-xs text-gray-500">
-                            {currentState === 'AWAITING_USER_INPUT' ? '⏳ Awaiting response...' : '🔄 Processing...'}
+                            {currentState === 'AWAITING_USER_INPUT' ? 'Awaiting response...' : 'Processing...'}
                         </span>
                     </div>
                     <div className="relative rounded-lg overflow-hidden bg-black/20">
@@ -245,7 +245,7 @@ export default function ControlPanel({ status, onStart, onStop }: ControlPanelPr
                             </span>
                             {uploadedImage.educational === 'yes' && (
                                 <span className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400">
-                                    📚 Educational
+                                    <BookOpen className="w-3 h-3 inline mr-1" /> Educational
                                 </span>
                             )}
                             <div className="text-sm text-white font-medium">

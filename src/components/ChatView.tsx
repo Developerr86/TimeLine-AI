@@ -199,7 +199,7 @@ export default function ChatView({ showNotification }: ChatViewProps) {
                             The assistant will search your notes and provide relevant answers.
                         </p>
                         {stats?.total_chunks === 0 && (
-                            <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 text-sm">
+                            <div className="mt-4 p-3 bg-yellow-500/10 border-[3px] border-yellow-500/30 rounded-lg text-yellow-400 text-sm">
                                 <AlertCircle className="w-4 h-4 inline mr-2" />
                                 No content indexed yet. Capture some content first!
                             </div>
@@ -249,7 +249,7 @@ export default function ChatView({ showNotification }: ChatViewProps) {
 
                                 {/* Sources */}
                                 {message.sources && message.sources.length > 0 && (
-                                    <div className="mt-3 pt-3 border-t border-gray-600/50">
+                                    <div className="mt-3 pt-3 border-t-[3px] border-gray-600/50">
                                         <p className="text-xs text-gray-400 mb-2">Sources:</p>
                                         <div className="flex flex-wrap gap-2">
                                             {message.sources.map((source, i) => (
@@ -292,7 +292,8 @@ export default function ChatView({ showNotification }: ChatViewProps) {
                 <button
                     type="submit"
                     disabled={isLoading || !input.trim()}
-                    className="px-6 py-3 gradient-primary rounded-xl text-white font-medium transition-all duration-200 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-6 py-3 rounded-xl text-white font-medium transition-all duration-200 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    style={{ background: '#ff6b6b' }}
                 >
                     {isLoading ? (
                         <Loader2 className="w-5 h-5 animate-spin" />

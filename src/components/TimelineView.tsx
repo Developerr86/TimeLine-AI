@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw, Camera } from 'lucide-react';
 import ActivityCard from './ActivityCard';
 import ConfirmDialog from './ConfirmDialog';
 import { api, Activity } from '../services/api';
@@ -121,7 +121,7 @@ export default function TimelineView({ onRefresh }: TimelineViewProps) {
                 </div>
             ) : activities.length === 0 ? (
                 <div className="glass rounded-2xl p-12 text-center">
-                    <div className="text-6xl mb-4">📸</div>
+                    <Camera className="w-16 h-16 text-gray-500 mb-4" />
                     <h2 className="text-2xl font-medium text-white mb-2">No activities captured yet</h2>
                     <p className="text-gray-400 mb-6">Click "Start" to begin capturing and analyzing your screen activity.</p>
                 </div>

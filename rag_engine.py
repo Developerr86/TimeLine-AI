@@ -98,7 +98,7 @@ class RAGEngine:
         try:
             # Initialize embedding model
             print("🔄 Loading embedding model (all-MiniLM-L6-v2)...")
-            self._embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            self._embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
             print("✅ Embedding model loaded")
             
             # Initialize ChromaDB with persistent storage
